@@ -1,0 +1,4 @@
+/personaltv
+*.db
+/web/node_modules
+/web/dist
