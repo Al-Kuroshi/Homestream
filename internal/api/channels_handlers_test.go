@@ -65,6 +65,23 @@ func TestChannelsAPI_CreateGetUpdateDelete(t *testing.T) {
 	}
 }
 
+func TestChannelsAPI_UpdateNonexistent404(t *testing.T) {
+	srv := newTestServer(t)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	updateBody, _ := json.Marshal(map[string]any{"name": "Movies HD", "description": "Movie channel", "enabled": true, "position": 1})
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/channels/999999", bytes.NewReader(updateBody))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
 func TestProgramsAPI_AddListUpdateDelete(t *testing.T) {
 	ctx := context.Background()
 	conn := db.OpenTest(t)

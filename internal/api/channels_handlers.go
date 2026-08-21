@@ -69,6 +69,12 @@ func (s *Server) handleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+
+	if _, err := s.channels.GetChannel(r.Context(), id); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+
 	var req updateChannelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
