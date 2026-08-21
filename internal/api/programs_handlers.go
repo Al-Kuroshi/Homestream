@@ -20,6 +20,10 @@ func (s *Server) handleListPrograms(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	if _, err := s.channels.GetChannel(r.Context(), channelID); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
 	programs, err := s.channels.ListPrograms(r.Context(), channelID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -73,6 +77,10 @@ func (s *Server) handleUpdateProgram(w http.ResponseWriter, r *http.Request) {
 	var req updateProgramRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.MediaItemID == 0 || req.StartTime.IsZero() {
+		writeError(w, http.StatusBadRequest, errRequiredFields("media_item_id", "start_time"))
 		return
 	}
 

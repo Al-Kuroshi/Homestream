@@ -2,44 +2,50 @@ package model
 
 import "time"
 
+// These structs are marshalled straight to the wire by the API handlers, so
+// their json tags are the public response contract. They use the same
+// snake_case names as the request bodies and the DB columns, rather than
+// Go's default capitalized field names, so a client sees one consistent
+// casing across every request and response.
+
 type MediaSource struct {
-	ID        int64
-	Name      string
-	Path      string
-	CreatedAt time.Time
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	Path      string    `json:"path"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type MediaItem struct {
-	ID          int64
-	SourceID    int64
-	RelPath     string
-	Title       string
-	DurationSec float64
-	VideoCodec  string
-	AudioCodec  string
-	Container   string
-	SizeBytes   int64
-	ModTime     time.Time
-	Invalid     bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          int64     `json:"id"`
+	SourceID    int64     `json:"source_id"`
+	RelPath     string    `json:"rel_path"`
+	Title       string    `json:"title"`
+	DurationSec float64   `json:"duration_sec"`
+	VideoCodec  string    `json:"video_codec"`
+	AudioCodec  string    `json:"audio_codec"`
+	Container   string    `json:"container"`
+	SizeBytes   int64     `json:"size_bytes"`
+	ModTime     time.Time `json:"mod_time"`
+	Invalid     bool      `json:"invalid"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type Channel struct {
-	ID          int64
-	Name        string
-	Description string
-	Enabled     bool
-	Position    int
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Enabled     bool      `json:"enabled"`
+	Position    int       `json:"position"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type Program struct {
-	ID          int64
-	ChannelID   int64
-	MediaItemID int64
-	StartTime   time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          int64     `json:"id"`
+	ChannelID   int64     `json:"channel_id"`
+	MediaItemID int64     `json:"media_item_id"`
+	StartTime   time.Time `json:"start_time"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }

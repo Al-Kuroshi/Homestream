@@ -56,7 +56,9 @@ func (r *MediaSourceRepository) List(ctx context.Context) ([]*model.MediaSource,
 	}
 	defer rows.Close()
 
-	var sources []*model.MediaSource
+	// Initialized (not nil) so an empty result set marshals to a JSON [] and
+	// not null, which would break any client that iterates the response.
+	sources := make([]*model.MediaSource, 0)
 	for rows.Next() {
 		var s model.MediaSource
 		var createdAt string

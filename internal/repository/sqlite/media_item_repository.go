@@ -160,7 +160,9 @@ func scanMediaItem(scan scanRow) (*model.MediaItem, error) {
 }
 
 func scanMediaItems(rows *sql.Rows) ([]*model.MediaItem, error) {
-	var items []*model.MediaItem
+	// Initialized (not nil) so an empty result set marshals to a JSON [] and
+	// not null, which would break any client that iterates the response.
+	items := make([]*model.MediaItem, 0)
 	for rows.Next() {
 		m, err := scanMediaItem(rows.Scan)
 		if err != nil {

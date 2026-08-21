@@ -27,6 +27,11 @@ func (s *Server) handleChannelNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, err := s.channels.GetChannel(r.Context(), channelID); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+
 	state, err := s.channels.CurrentState(r.Context(), channelID, time.Now())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)

@@ -50,7 +50,9 @@ func (r *ProgramRepository) ListByChannel(ctx context.Context, channelID int64) 
 	}
 	defer rows.Close()
 
-	var programs []*model.Program
+	// Initialized (not nil) so an empty result set marshals to a JSON [] and
+	// not null, which would break any client that iterates the response.
+	programs := make([]*model.Program, 0)
 	for rows.Next() {
 		p, err := scanProgram(rows.Scan)
 		if err != nil {

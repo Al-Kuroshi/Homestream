@@ -49,7 +49,9 @@ func (r *ChannelRepository) List(ctx context.Context) ([]*model.Channel, error) 
 	}
 	defer rows.Close()
 
-	var channels []*model.Channel
+	// Initialized (not nil) so an empty result set marshals to a JSON [] and
+	// not null, which would break any client that iterates the response.
+	channels := make([]*model.Channel, 0)
 	for rows.Next() {
 		c, err := scanChannel(rows.Scan)
 		if err != nil {
