@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"personaltv/internal/api"
+	"personaltv/internal/channels"
 	"personaltv/internal/db"
 	"personaltv/internal/mediastore"
 	"personaltv/internal/model"
@@ -20,8 +22,22 @@ func newTestServer(t *testing.T) *api.Server {
 	conn := db.OpenTest(t)
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
 	itemRepo := sqlite.NewMediaItemRepository(conn)
+	channelRepo := sqlite.NewChannelRepository(conn)
+	programRepo := sqlite.NewProgramRepository(conn)
 	scanner := mediastore.NewScanner(sourceRepo, itemRepo)
-	return api.NewServer(sourceRepo, itemRepo, scanner)
+	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
+	return api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
+}
+
+func newTestServerWithConn(t *testing.T, conn *sql.DB) *api.Server {
+	t.Helper()
+	sourceRepo := sqlite.NewMediaSourceRepository(conn)
+	itemRepo := sqlite.NewMediaItemRepository(conn)
+	channelRepo := sqlite.NewChannelRepository(conn)
+	programRepo := sqlite.NewProgramRepository(conn)
+	scanner := mediastore.NewScanner(sourceRepo, itemRepo)
+	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
+	return api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
 }
 
 func TestSourcesAPI_CreateListDelete(t *testing.T) {
