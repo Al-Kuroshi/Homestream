@@ -12,16 +12,24 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// Open opens (creating if needed) the SQLite database at path and applies
+// all pending migrations.
+//
+// The pragmas live in the DSN rather than being Exec'd after opening:
+// PRAGMA foreign_keys is connection-scoped, so running it once against the
+// pool would only configure whichever single connection happened to serve
+// that Exec, leaving every other pooled connection with foreign keys off
+// (silently disabling ON DELETE CASCADE and every REFERENCES constraint
+// under concurrency). Putting it in the DSN makes modernc.org/sqlite apply
+// it to every connection the pool opens.
 func Open(path string) (*sql.DB, error) {
-	conn, err := sql.Open("sqlite", path)
+	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("connecting to database: %w", err)
-	}
-	if _, err := conn.Exec("PRAGMA foreign_keys = ON"); err != nil {
-		return nil, fmt.Errorf("enabling foreign keys: %w", err)
 	}
 	if err := migrate(conn); err != nil {
 		return nil, fmt.Errorf("running migrations: %w", err)
@@ -72,7 +80,7 @@ func migrate(conn *sql.DB) error {
 		}
 		if _, err := tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", name); err != nil {
 			tx.Rollback()
-			return err
+			return fmt.Errorf("recording migration %s: %w", name, err)
 		}
 		if err := tx.Commit(); err != nil {
 			return err

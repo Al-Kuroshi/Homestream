@@ -2,13 +2,20 @@ package mediastore
 
 import (
 	"context"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"personaltv/internal/model"
 	"personaltv/internal/repository"
 )
+
+// probeTimeout bounds a single ffprobe invocation. A file on an unresponsive
+// NAS/SMB mount would otherwise stall the whole scan (and the HTTP request
+// that started it) indefinitely.
+const probeTimeout = 30 * time.Second
 
 var videoExtensions = map[string]bool{
 	".mp4": true, ".mkv": true, ".avi": true, ".mov": true,
@@ -46,7 +53,11 @@ func (s *Scanner) ScanSource(ctx context.Context, sourceID int64) error {
 
 	walkErr := filepath.WalkDir(source.Path, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return err
+			// A traversal error for one entry (an unreadable subdirectory on
+			// an SMB mount, a file that vanished mid-walk) must not abort the
+			// rest of the tree.
+			log.Printf("mediastore: skipping %s during scan of source %d: %v", path, sourceID, err)
+			return nil
 		}
 		if d.IsDir() {
 			return nil
@@ -80,7 +91,10 @@ func (s *Scanner) ScanSource(ctx context.Context, sourceID int64) error {
 			ModTime:   info.ModTime().UTC(),
 		}
 
-		if probeResult, probeErr := Probe(path); probeErr != nil {
+		probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+		probeResult, probeErr := Probe(probeCtx, path)
+		cancel()
+		if probeErr != nil {
 			item.Invalid = true
 		} else {
 			item.DurationSec = probeResult.DurationSec
@@ -90,7 +104,11 @@ func (s *Scanner) ScanSource(ctx context.Context, sourceID int64) error {
 			item.Invalid = false
 		}
 
-		return s.items.Upsert(ctx, item)
+		if err := s.items.Upsert(ctx, item); err != nil {
+			// One item failing to persist must not abort the whole rescan.
+			log.Printf("mediastore: failed to record %s for source %d: %v", relPath, sourceID, err)
+		}
+		return nil
 	})
 	if walkErr != nil {
 		return walkErr

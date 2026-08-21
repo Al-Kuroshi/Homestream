@@ -77,6 +77,96 @@ func TestService_CurrentState_NoPrograms(t *testing.T) {
 	}
 }
 
+// TestService_CurrentState_SkipsMissingAndInvalidMediaItems covers the
+// binding constraint that a single unavailable/invalid media item must never
+// abort a whole channel's schedule computation. A channel carries three
+// programs — one whose media item was deleted out from under it, one whose
+// media item is marked Invalid, and one healthy one — and the healthy one
+// must still be reported correctly.
+func TestService_CurrentState_SkipsMissingAndInvalidMediaItems(t *testing.T) {
+	ctx := context.Background()
+	conn := db.OpenTest(t)
+
+	sourceRepo := sqlite.NewMediaSourceRepository(conn)
+	itemRepo := sqlite.NewMediaItemRepository(conn)
+	channelRepo := sqlite.NewChannelRepository(conn)
+	programRepo := sqlite.NewProgramRepository(conn)
+
+	source := &model.MediaSource{Name: "Movies", Path: "/media/movies"}
+	if err := sourceRepo.Create(ctx, source); err != nil {
+		t.Fatalf("failed to create source: %v", err)
+	}
+
+	ghost := &model.MediaItem{SourceID: source.ID, RelPath: "ghost.mp4", Title: "Ghost", DurationSec: 3600, ModTime: time.Now().UTC()}
+	broken := &model.MediaItem{SourceID: source.ID, RelPath: "broken.mp4", Title: "Broken", DurationSec: 3600, Invalid: true, ModTime: time.Now().UTC()}
+	good := &model.MediaItem{SourceID: source.ID, RelPath: "good.mp4", Title: "Good", DurationSec: 3600, ModTime: time.Now().UTC()}
+	for _, item := range []*model.MediaItem{ghost, broken, good} {
+		if err := itemRepo.Upsert(ctx, item); err != nil {
+			t.Fatalf("failed to upsert %s: %v", item.RelPath, err)
+		}
+	}
+
+	channel := &model.Channel{Name: "Movies", Enabled: true}
+	if err := channelRepo.Create(ctx, channel); err != nil {
+		t.Fatalf("failed to create channel: %v", err)
+	}
+
+	base := time.Date(2026, 1, 1, 18, 0, 0, 0, time.UTC)
+	ghostProgram := &model.Program{ChannelID: channel.ID, MediaItemID: ghost.ID, StartTime: base}
+	brokenProgram := &model.Program{ChannelID: channel.ID, MediaItemID: broken.ID, StartTime: base.Add(time.Hour)}
+	goodProgram := &model.Program{ChannelID: channel.ID, MediaItemID: good.ID, StartTime: base.Add(2 * time.Hour)}
+	for _, p := range []*model.Program{ghostProgram, brokenProgram, goodProgram} {
+		if err := programRepo.Create(ctx, p); err != nil {
+			t.Fatalf("failed to create program: %v", err)
+		}
+	}
+
+	// Orphan ghostProgram by deleting its media item with foreign keys
+	// disabled on one pinned connection. Normally ON DELETE CASCADE would
+	// take the program with it; this reproduces the state a database written
+	// before foreign keys were enforced can still be in.
+	pinned, err := conn.Conn(ctx)
+	if err != nil {
+		t.Fatalf("failed to pin a connection: %v", err)
+	}
+	if _, err := pinned.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		t.Fatalf("failed to disable foreign keys: %v", err)
+	}
+	if _, err := pinned.ExecContext(ctx, `DELETE FROM media_items WHERE id = ?`, ghost.ID); err != nil {
+		t.Fatalf("failed to delete ghost media item: %v", err)
+	}
+	if err := pinned.Close(); err != nil {
+		t.Fatalf("failed to release pinned connection: %v", err)
+	}
+
+	svc := channels.NewService(channelRepo, programRepo, itemRepo)
+
+	// During the orphaned slot's window the channel is simply off-air, and
+	// the next healthy program is still reported.
+	state, err := svc.CurrentState(ctx, channel.ID, base.Add(30*time.Minute))
+	if err != nil {
+		t.Fatalf("CurrentState returned error despite a missing media item: %v", err)
+	}
+	if state.Current != nil {
+		t.Errorf("expected no current program while the orphaned slot's window is active, got %+v", state.Current)
+	}
+	if state.Next == nil || state.Next.ProgramID != goodProgram.ID {
+		t.Fatalf("expected the healthy program %d to be next, got %+v", goodProgram.ID, state.Next)
+	}
+
+	// And the healthy program still computes correctly during its own window.
+	state, err = svc.CurrentState(ctx, channel.ID, base.Add(2*time.Hour+15*time.Minute))
+	if err != nil {
+		t.Fatalf("CurrentState returned error: %v", err)
+	}
+	if state.Current == nil || state.Current.ProgramID != goodProgram.ID {
+		t.Fatalf("expected program %d to be current, got %+v", goodProgram.ID, state.Current)
+	}
+	if state.Offset != 15*time.Minute {
+		t.Errorf("expected offset 15m, got %v", state.Offset)
+	}
+}
+
 func TestService_ProgramCRUD(t *testing.T) {
 	ctx := context.Background()
 	conn := db.OpenTest(t)

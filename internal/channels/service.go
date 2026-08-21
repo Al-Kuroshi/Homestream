@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"personaltv/internal/model"
@@ -71,9 +72,18 @@ func (s *Service) CurrentState(ctx context.Context, channelID int64, now time.Ti
 
 	scheduled := make([]scheduler.ScheduledProgram, 0, len(programs))
 	for _, p := range programs {
+		// A single unavailable or invalid media item must never abort a whole
+		// channel's schedule computation: skip the affected slot and keep
+		// evaluating the rest of the schedule.
 		item, err := s.items.Get(ctx, p.MediaItemID)
+		if errors.Is(err, repository.ErrNotFound) {
+			continue // media gone (deleted or pruned); this slot simply doesn't play
+		}
 		if err != nil {
 			return scheduler.CurrentState{}, err
+		}
+		if item.Invalid || item.DurationSec <= 0 {
+			continue // unplayable: no usable duration to schedule against
 		}
 		scheduled = append(scheduled, scheduler.ScheduledProgram{
 			ProgramID:   p.ID,

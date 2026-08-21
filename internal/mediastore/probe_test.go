@@ -1,6 +1,7 @@
 package mediastore
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,7 +27,7 @@ func TestProbe_ValidVideo(t *testing.T) {
 	dir := t.TempDir()
 	path := generateTestVideo(t, dir, "test.mp4", 2)
 
-	result, err := Probe(path)
+	result, err := Probe(context.Background(), path)
 	if err != nil {
 		t.Fatalf("Probe returned error: %v", err)
 	}
@@ -48,7 +49,22 @@ func TestProbe_InvalidFile(t *testing.T) {
 		t.Fatalf("failed to write test file: %v", err)
 	}
 
-	if _, err := Probe(path); err == nil {
+	if _, err := Probe(context.Background(), path); err == nil {
 		t.Fatal("expected error for invalid file, got nil")
+	}
+}
+
+// TestProbe_RespectsCanceledContext confirms Probe is actually bounded by its
+// context — a hung ffprobe (a stalled network mount) must not block forever.
+// An already-canceled context is used so the check is instant.
+func TestProbe_RespectsCanceledContext(t *testing.T) {
+	dir := t.TempDir()
+	path := generateTestVideo(t, dir, "test.mp4", 2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := Probe(ctx, path); err == nil {
+		t.Fatal("expected an error when probing with a canceled context, got nil")
 	}
 }

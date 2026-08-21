@@ -2,9 +2,17 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 
 	"personaltv/internal/model"
 )
+
+// ErrNotFound is what every repository's Get returns when no row matches the
+// requested id. It is deliberately an alias of sql.ErrNoRows so the SQLite
+// implementation can keep propagating the driver's error untouched, while
+// callers above the repository layer (services, handlers) can test for it
+// with errors.Is without importing database/sql themselves.
+var ErrNotFound = sql.ErrNoRows
 
 type MediaSourceRepository interface {
 	Create(ctx context.Context, s *model.MediaSource) error

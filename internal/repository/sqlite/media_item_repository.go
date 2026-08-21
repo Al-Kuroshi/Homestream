@@ -97,6 +97,10 @@ func (r *MediaItemRepository) DeleteBySource(ctx context.Context, sourceID int64
 	return err
 }
 
+// DeleteMissing prunes every item under sourceID whose RelPath is not in
+// keepRelPaths. The deletes run inside a single transaction so the prune is
+// all-or-nothing: a failure partway through must not leave the library in a
+// half-pruned state (and, via ON DELETE CASCADE, half-deleted schedules).
 func (r *MediaItemRepository) DeleteMissing(ctx context.Context, sourceID int64, keepRelPaths []string) error {
 	keep := make(map[string]bool, len(keepRelPaths))
 	for _, p := range keepRelPaths {
@@ -107,14 +111,29 @@ func (r *MediaItemRepository) DeleteMissing(ctx context.Context, sourceID int64,
 	if err != nil {
 		return err
 	}
+
+	toDelete := make([]int64, 0, len(existing))
 	for _, item := range existing {
 		if !keep[item.RelPath] {
-			if _, err := r.db.ExecContext(ctx, `DELETE FROM media_items WHERE id = ?`, item.ID); err != nil {
-				return err
-			}
+			toDelete = append(toDelete, item.ID)
 		}
 	}
-	return nil
+	if len(toDelete) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, id := range toDelete {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM media_items WHERE id = ?`, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // scanRow is satisfied by both *sql.Row.Scan and *sql.Rows.Scan.

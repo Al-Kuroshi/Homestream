@@ -1,6 +1,7 @@
 package mediastore
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -29,8 +30,12 @@ type ffprobeOutput struct {
 // A non-nil error means the file could not be read as media at all —
 // callers (mediastore.Scanner) treat that as "mark this item invalid",
 // not as a fatal error for the whole scan.
-func Probe(path string) (*ProbeResult, error) {
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", path)
+//
+// ctx bounds the subprocess: ffprobe against a stalled network mount can
+// otherwise block forever, and with it the HTTP request that triggered the
+// scan. Cancelling ctx kills the ffprobe process.
+func Probe(ctx context.Context, path string) (*ProbeResult, error) {
+	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", path)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("ffprobe failed for %s: %w", path, err)
