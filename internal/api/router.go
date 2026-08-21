@@ -42,6 +42,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/programs/{id}", s.handleUpdateProgram)
 	mux.HandleFunc("DELETE /api/programs/{id}", s.handleDeleteProgram)
 
+	mux.HandleFunc("GET /api/channels/{id}/now", s.handleChannelNow)
+
 	return mux
 }
 
