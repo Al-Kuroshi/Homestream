@@ -2,7 +2,6 @@ package integration_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -39,7 +38,6 @@ func generateTestVideo(t *testing.T, dir, name string, durationSec int) string {
 // source, scan it, create a channel, schedule media on it, and confirm the
 // API reports what's currently playing. This is Plan 1's Definition of Done.
 func TestFullUserJourney(t *testing.T) {
-	ctx := context.Background()
 	mediaDir := t.TempDir()
 	generateTestVideo(t, mediaDir, "movie-a.mp4", 10)
 
@@ -55,10 +53,17 @@ func TestFullUserJourney(t *testing.T) {
 	defer ts.Close()
 
 	// 1. configure a media source
-	source := &model.MediaSource{Name: "Movies", Path: mediaDir}
-	if err := sourceRepo.Create(ctx, source); err != nil {
-		t.Fatalf("failed to create source: %v", err)
+	srcBody, _ := json.Marshal(map[string]any{"name": "Movies", "path": mediaDir})
+	srcResp, err := http.Post(ts.URL+"/api/sources", "application/json", bytes.NewReader(srcBody))
+	if err != nil {
+		t.Fatalf("create source request failed: %v", err)
 	}
+	if srcResp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 creating source, got %d", srcResp.StatusCode)
+	}
+	var source model.MediaSource
+	json.NewDecoder(srcResp.Body).Decode(&source)
+	srcResp.Body.Close()
 
 	// 2. scan it
 	scanResp, err := http.Post(ts.URL+"/api/sources/"+strconv.FormatInt(source.ID, 10)+"/scan", "application/json", nil)
@@ -127,8 +132,4 @@ func TestFullUserJourney(t *testing.T) {
 	if int64(current["media_item_id"].(float64)) != item.ID {
 		t.Errorf("expected current media item %d, got %v", item.ID, current["media_item_id"])
 	}
-
-	// 7. restart simulation: reopen the same DB file and confirm state survives
-	// (nothing in this stack is in-memory-only per design spec §6 reliability).
-	_ = channel
 }
