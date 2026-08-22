@@ -45,7 +45,11 @@ describe("AppRoutes", () => {
     expect(screen.getByRole("heading", { name: "Channels" })).toBeInTheDocument();
   });
 
-  it("renders the Settings screen at /settings", () => {
+  it("renders the Settings screen at /settings", async () => {
+    server.use(
+      http.get("/api/sources", () => HttpResponse.json([])),
+      http.get("/api/media", () => HttpResponse.json([]))
+    );
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <MemoryRouter initialEntries={["/settings"]}>
@@ -53,6 +57,6 @@ describe("AppRoutes", () => {
         </MemoryRouter>
       </QueryClientProvider>
     );
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
   });
 });
