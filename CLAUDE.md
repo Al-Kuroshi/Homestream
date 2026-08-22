@@ -4,7 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This repository currently contains only a product requirements document (`docs/prd/HomeStreamer.md`) — there is no source code, build tooling, tests, or dependency manifest yet. There are no build/lint/test commands to document until implementation begins. When code is added, update this file with the actual commands (build, lint, test, run a single test, Docker commands).
+The core backend is implemented: Go module `personaltv` (Go 1.22+), SQLite data layer, local-filesystem media scanner, pure scheduling logic, channels service, and a REST API (`internal/db`, `internal/model`, `internal/repository`, `internal/mediastore`, `internal/scheduler`, `internal/channels`, `internal/api`, wired in `cmd/personaltv`). No frontend, playback streaming, or Docker packaging yet — those are separate, not-yet-written plans (see `docs/plans/`).
+
+`ffmpeg`/`ffprobe` must be installed and on `PATH` to build the mental model of and to run this repo's tests (several tests generate short synthetic videos with `ffmpeg` and probe them with `ffprobe`).
+
+```bash
+go build ./...                  # build
+go vet ./...                    # lint
+gofmt -l .                      # format check (empty output = clean)
+go test ./...                   # test
+go test ./... -race             # test with race detector (use before merging/finishing a branch)
+go test ./internal/mediastore/... -run TestScanner -v   # run a single package/test pattern
+```
+
+There is no Dockerfile/Docker Compose setup yet, despite Docker Compose being the intended deployment method (see below) — that lands with a future packaging plan.
 
 ## What this product is
 
