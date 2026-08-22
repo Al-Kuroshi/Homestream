@@ -34,7 +34,8 @@ describe("AppRoutes", () => {
     expect(await screen.findByRole("heading", { name: "Library" })).toBeInTheDocument();
   });
 
-  it("renders the Channels screen at /channels", () => {
+  it("renders the Channels screen at /channels", async () => {
+    server.use(http.get("/api/channels", () => HttpResponse.json([])));
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <MemoryRouter initialEntries={["/channels"]}>
@@ -42,7 +43,7 @@ describe("AppRoutes", () => {
         </MemoryRouter>
       </QueryClientProvider>
     );
-    expect(screen.getByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
   });
 
   it("renders the Settings screen at /settings", async () => {
