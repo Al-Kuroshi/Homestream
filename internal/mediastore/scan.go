@@ -50,13 +50,18 @@ func (s *Scanner) ScanSource(ctx context.Context, sourceID int64) error {
 	}
 
 	var seenRelPaths []string
+	sawWalkErr := false
 
 	walkErr := filepath.WalkDir(source.Path, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			// A traversal error for one entry (an unreadable subdirectory on
 			// an SMB mount, a file that vanished mid-walk) must not abort the
-			// rest of the tree.
+			// rest of the tree. It does mean the tree was not fully observed,
+			// though (this also covers the root path itself becoming
+			// unreachable, e.g. a dropped NAS mount), so pruning
+			// missing items afterward would be unsafe — see sawWalkErr below.
 			log.Printf("mediastore: skipping %s during scan of source %d: %v", path, sourceID, err)
+			sawWalkErr = true
 			return nil
 		}
 		if d.IsDir() {
@@ -112,6 +117,17 @@ func (s *Scanner) ScanSource(ctx context.Context, sourceID int64) error {
 	})
 	if walkErr != nil {
 		return walkErr
+	}
+
+	if sawWalkErr {
+		// The walk didn't observe the whole tree (possibly not even the
+		// root), so seenRelPaths is incomplete or empty. Treating that as
+		// "everything else was deleted" would prune media items that are
+		// still there — and since programs reference media_items with
+		// ON DELETE CASCADE, that would silently wipe schedules too. Skip
+		// pruning until a scan can see the whole tree again.
+		log.Printf("mediastore: scan of source %d saw errors during traversal; skipping prune of missing items", sourceID)
+		return nil
 	}
 
 	return s.items.DeleteMissing(ctx, sourceID, seenRelPaths)

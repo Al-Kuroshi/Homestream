@@ -257,6 +257,65 @@ func TestScanner_RescanRepairsPreviouslyInvalidFile(t *testing.T) {
 	}
 }
 
+// TestScanner_RootWalkErrorDoesNotPruneExistingItems covers the critical
+// data-loss regression: when the walk can't even reach the source's root
+// (e.g. a dropped NAS/SMB mount), filepath.WalkDir invokes the callback once
+// with a root-level error and no further entries, so seenRelPaths stays
+// empty. That must not be mistaken for "every file was deleted" — pruning in
+// that case would wipe every existing media_items row, which cascades via
+// ON DELETE CASCADE to delete every scheduled program too. Simulate the
+// unreachable-root condition deterministically by removing the whole media
+// directory before the second scan, so os.Lstat(source.Path) fails on every
+// OS without relying on permission semantics.
+func TestScanner_RootWalkErrorDoesNotPruneExistingItems(t *testing.T) {
+	ctx := context.Background()
+	mediaDir := t.TempDir()
+	generateTestVideo(t, mediaDir, "keep-me.mp4", 2)
+
+	conn := db.OpenTest(t)
+	sourceRepo := sqlite.NewMediaSourceRepository(conn)
+	itemRepo := sqlite.NewMediaItemRepository(conn)
+
+	source := &model.MediaSource{Name: "Test Source", Path: mediaDir}
+	if err := sourceRepo.Create(ctx, source); err != nil {
+		t.Fatalf("failed to create source: %v", err)
+	}
+
+	scanner := NewScanner(sourceRepo, itemRepo)
+	if err := scanner.ScanSource(ctx, source.ID); err != nil {
+		t.Fatalf("first ScanSource returned error: %v", err)
+	}
+
+	before, err := itemRepo.ListBySource(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("ListBySource returned error: %v", err)
+	}
+	if len(before) != 1 || before[0].RelPath != "keep-me.mp4" {
+		t.Fatalf("expected 1 media item after first scan, got %+v", before)
+	}
+
+	// Simulate the source's root becoming unreachable (e.g. a dropped NAS
+	// mount): remove the whole directory the source still points at.
+	if err := os.RemoveAll(mediaDir); err != nil {
+		t.Fatalf("failed to remove media dir: %v", err)
+	}
+
+	if err := scanner.ScanSource(ctx, source.ID); err != nil {
+		t.Fatalf("second ScanSource returned error despite an unreachable root: %v", err)
+	}
+
+	after, err := itemRepo.ListBySource(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("ListBySource returned error: %v", err)
+	}
+	if len(after) != 1 || after[0].RelPath != "keep-me.mp4" {
+		t.Fatalf("expected the pre-existing media item to survive a root walk error untouched, got %+v", after)
+	}
+	if after[0].ID != before[0].ID {
+		t.Errorf("expected the same row id across scans, got %d then %d", before[0].ID, after[0].ID)
+	}
+}
+
 func TestScanner_ScanSourceRemovesDeletedFiles(t *testing.T) {
 	ctx := context.Background()
 	mediaDir := t.TempDir()
