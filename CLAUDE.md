@@ -19,6 +19,39 @@ go test ./internal/mediastore/... -run TestScanner -v   # run a single package/t
 
 There is no Dockerfile/Docker Compose setup yet, despite Docker Compose being the intended deployment method (see below) — that lands with a future packaging plan.
 
+## Testing conventions
+
+Tests live next to the code they test, as `*_test.go` files in the same
+package directory — standard Go convention, no separate `/tests` directory.
+One exception: `internal/integration/end_to_end_test.go` is a dedicated
+package holding a single full-stack test that drives the system through
+real HTTP calls, rather than testing one layer in isolation.
+
+- **Black-box by default.** Test files use an external test package
+  (`db_test`, `sqlite_test`, `api_test`, `channels_test`, `scheduler_test`,
+  `integration_test`) and only exercise the exported API, like a real
+  caller would. The one exception is `internal/mediastore`, whose two test
+  files use the internal `mediastore` package so `probe_test.go` and
+  `scan_test.go` can share the unexported `generateTestVideo` helper.
+- **Shared setup helpers within a package, not copy-pasted boilerplate.**
+  `internal/db/testhelper.go` exports `db.OpenTest(t)` for a fresh,
+  migrated, auto-cleaned-up SQLite DB — every other package's tests call
+  it rather than reimplementing DB setup. `internal/api`'s handler tests
+  similarly share `newTestServer`/`newTestServerWithConn` across files.
+- **`generateTestVideo` is intentionally duplicated** (in `internal/mediastore`
+  and `internal/integration`) rather than shared, because Go doesn't let
+  test helpers export across packages via `_test.go` files. Not an
+  oversight — do not "fix" this by trying to factor it into a shared
+  non-test package.
+- **Real dependencies, not mocks.** Tests hit a real (temp-file) SQLite DB
+  and shell out to real `ffmpeg`/`ffprobe` rather than mocking either —
+  closer to integration tests than strict unit tests, a deliberate
+  tradeoff that catches real driver/schema/subprocess issues at the cost
+  of needing `ffmpeg` on `PATH` to run the suite.
+- **Tests are written test-first.** New work in this repo should keep
+  following that: write the failing test, confirm it fails, then
+  implement.
+
 ## What this product is
 
 Personal TV (a.k.a. "HomeStreamer") is an open-source, self-hosted platform that turns a user's local media library into configurable, scheduled virtual TV channels with an electronic program guide (EPG) — the experience of "pick a channel and watch what's on" rather than browsing a file library.
