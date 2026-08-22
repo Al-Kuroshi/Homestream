@@ -20,3 +20,22 @@ export interface MediaItem {
   created_at: string;
   updated_at: string;
 }
+
+export interface Channel {
+  id: number;
+  name: string;
+  description: string;
+  enabled: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Program {
+  id: number;
+  channel_id: number;
+  media_item_id: number;
+  start_time: string;
+  created_at: string;
+  updated_at: string;
+}
