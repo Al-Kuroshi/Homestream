@@ -7,6 +7,7 @@ export function LibraryScreen() {
   const { data: items, isLoading, isError } = useMediaItems();
   const { data: sources } = useSources();
   const [search, setSearch] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<number | "all">("all");
   const [invalidOnly, setInvalidOnly] = useState(false);
 
   const sourceNameById = useMemo(() => {
@@ -18,10 +19,11 @@ export function LibraryScreen() {
   const filtered = useMemo(() => {
     return (items ?? []).filter((item) => {
       if (search && !item.title.toLowerCase().includes(search.toLowerCase())) return false;
+      if (sourceFilter !== "all" && item.source_id !== sourceFilter) return false;
       if (invalidOnly && !item.invalid) return false;
       return true;
     });
-  }, [items, search, invalidOnly]);
+  }, [items, search, sourceFilter, invalidOnly]);
 
   if (isLoading) return <p>Loading media…</p>;
   if (isError) return <p role="alert">Failed to load media library.</p>;
@@ -37,6 +39,16 @@ export function LibraryScreen() {
           onChange={(e) => setSearch(e.target.value)}
           aria-label="Search titles"
         />
+        <select
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
+          aria-label="Filter by source"
+        >
+          <option value="all">All sources</option>
+          {(sources ?? []).map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
         <label>
           <input type="checkbox" checked={invalidOnly} onChange={(e) => setInvalidOnly(e.target.checked)} />
           Invalid only

@@ -19,8 +19,17 @@ const MEDIA = [
     mod_time: "2026-01-01T00:00:00Z", invalid: true,
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
   },
+  {
+    id: 3, source_id: 2, rel_path: "c.mp4", title: "Show C", duration_sec: 1500,
+    video_codec: "h264", audio_codec: "aac", container: "mp4", size_bytes: 1,
+    mod_time: "2026-01-01T00:00:00Z", invalid: false,
+    created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+  },
 ];
-const SOURCES = [{ id: 1, name: "Movies", path: "/media/movies", created_at: "2026-01-01T00:00:00Z" }];
+const SOURCES = [
+  { id: 1, name: "Movies", path: "/media/movies", created_at: "2026-01-01T00:00:00Z" },
+  { id: 2, name: "TV", path: "/media/tv", created_at: "2026-01-01T00:00:00Z" },
+];
 
 function renderScreen() {
   server.use(
@@ -42,9 +51,11 @@ describe("LibraryScreen", () => {
   it("shows the owning source's name and an Invalid status for broken items", async () => {
     renderScreen();
     await screen.findByText("Movie A");
-    expect(screen.getAllByText("Movies")).toHaveLength(2);
+    // Scoped to table cells so this doesn't also match the "Filter by
+    // source" <select>'s <option>Movies</option>, which shares the same text.
+    expect(screen.getAllByRole("cell", { name: "Movies" })).toHaveLength(2);
     expect(screen.getByText("Invalid")).toBeInTheDocument();
-    expect(screen.getByText("OK")).toBeInTheDocument();
+    expect(screen.getAllByText("OK")).toHaveLength(2); // Movie A and Show C
   });
 
   it("filters by search text", async () => {
@@ -61,6 +72,20 @@ describe("LibraryScreen", () => {
     await userEvent.click(screen.getByLabelText("Invalid only"));
     expect(screen.queryByText("Movie A")).not.toBeInTheDocument();
     expect(screen.getByText("Broken B")).toBeInTheDocument();
+  });
+
+  it("filters by source", async () => {
+    renderScreen();
+    await screen.findByText("Movie A");
+    expect(screen.getByText("Show C")).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Filter by source"), "1");
+    expect(screen.getByText("Movie A")).toBeInTheDocument();
+    expect(screen.getByText("Broken B")).toBeInTheDocument();
+    expect(screen.queryByText("Show C")).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Filter by source"), "all");
+    expect(screen.getByText("Show C")).toBeInTheDocument();
   });
 
   it("shows an empty-state message when no media matches the filters", async () => {
