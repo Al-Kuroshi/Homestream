@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import { App } from "./App";
 
 describe("App", () => {
-  it("renders the app heading", () => {
+  it("renders the sidebar navigation and the routed content area", () => {
     render(<App />);
-    expect(screen.getByRole("heading", { name: "Personal TV" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Guide" })).toBeInTheDocument();
   });
 });
