@@ -1,0 +1,29 @@
+.source-list {
+  list-style: none;
+  padding: 0;
+}
+
+.source-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #333;
+  gap: 12px;
+}
+
+.source-path {
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+
+.source-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+form label {
+  display: block;
+  margin-bottom: 8px;
+}
