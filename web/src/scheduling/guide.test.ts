@@ -54,6 +54,19 @@ describe("buildTimeline", () => {
     ]);
   });
 
+  it("does not render a second overlapping block for a program nested entirely inside a prior one", () => {
+    const a = guideProgram(1, "2026-01-01T17:00:00Z", "2026-01-01T21:00:00Z");
+    const b = guideProgram(2, "2026-01-01T18:00:00Z", "2026-01-01T19:00:00Z");
+    const blocks = buildTimeline([a, b], WINDOW_START, WINDOW_END);
+    // Exactly one program block (for a, spanning its full clipped range),
+    // no block at all for b (fully subsumed by a), and no off-air gap
+    // inserted between them.
+    expect(blocks).toEqual([
+      { type: "program", program: a, start: WINDOW_START, end: a.end },
+      { type: "off-air", start: a.end, end: WINDOW_END },
+    ]);
+  });
+
   it("excludes programs entirely outside the window", () => {
     const before = guideProgram(1, "2026-01-01T10:00:00Z", "2026-01-01T11:00:00Z");
     const inWindow = guideProgram(2, "2026-01-01T18:00:00Z", "2026-01-01T19:00:00Z");

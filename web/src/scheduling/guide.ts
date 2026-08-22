@@ -43,12 +43,16 @@ export function buildTimeline(programs: GuideProgram[], windowStart: Date, windo
     if (program.start > cursor) {
       blocks.push({ type: "off-air", start: cursor, end: program.start });
     }
-    blocks.push({
-      type: "program",
-      program,
-      start: program.start < windowStart ? windowStart : program.start,
-      end: program.end > windowEnd ? windowEnd : program.end,
-    });
+    // Clip the rendered start to windowStart AND cursor: an overlapping
+    // program nested inside one already rendered (e.g. a prior, longer
+    // program's block already covers this span) must not produce a second,
+    // overlapping block. If clipping collapses start >= end, the program is
+    // fully subsumed and contributes no block at all.
+    const start = new Date(Math.max(program.start.getTime(), windowStart.getTime(), cursor.getTime()));
+    const end = program.end > windowEnd ? windowEnd : program.end;
+    if (start < end) {
+      blocks.push({ type: "program", program, start, end });
+    }
     if (program.end > cursor) cursor = program.end;
   }
   if (cursor < windowEnd) {
