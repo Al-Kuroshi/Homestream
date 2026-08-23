@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { MutationError } from "../components/MutationError";
 import { useChannels, useCreateChannel, useDeleteChannel, useUpdateChannel } from "../api/channels";
 import type { Channel } from "../api/types";
 import "./ChannelsListScreen.css";
@@ -60,6 +61,8 @@ export function ChannelsListScreen() {
   return (
     <section>
       <h1>Channels</h1>
+      <MutationError isError={updateChannel.isError} error={updateChannel.error} />
+      <MutationError isError={deleteChannel.isError} error={deleteChannel.error} />
       <ul className="channel-list">
         {sorted.map((channel, index) => (
           <li key={channel.id}>
@@ -98,6 +101,7 @@ export function ChannelsListScreen() {
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
         <button type="submit" disabled={createChannel.isPending}>Create channel</button>
+        <MutationError isError={createChannel.isError} error={createChannel.error} />
       </form>
     </section>
   );

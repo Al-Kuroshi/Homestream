@@ -125,4 +125,16 @@ describe("ChannelsListScreen", () => {
 
     await waitFor(() => expect(deleted).toBe(true));
   });
+
+  it("shows an error message when deleting a channel fails", async () => {
+    server.use(
+      http.delete("/api/channels/1", () => HttpResponse.json({ error: "cannot delete: channel has active viewers" }, { status: 500 }))
+    );
+    renderScreen();
+    await screen.findByRole("link", { name: "Movies" });
+
+    await userEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("cannot delete: channel has active viewers");
+  });
 });

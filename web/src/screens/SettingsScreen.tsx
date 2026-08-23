@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { MutationError } from "../components/MutationError";
 import { useMediaItems } from "../api/media";
 import { useCreateSource, useDeleteSource, useScanSource, useSources } from "../api/sources";
 import "./SettingsScreen.css";
@@ -32,6 +33,8 @@ export function SettingsScreen() {
     <section>
       <h1>Settings</h1>
       <h2>Media Sources</h2>
+      <MutationError isError={scanSource.isError} error={scanSource.error} />
+      <MutationError isError={deleteSource.isError} error={deleteSource.error} />
       <ul className="source-list">
         {(sources ?? []).map((source) => (
           <li key={source.id}>
@@ -78,7 +81,7 @@ export function SettingsScreen() {
           <input value={path} onChange={(e) => setPath(e.target.value)} required />
         </label>
         <button type="submit" disabled={createSource.isPending}>Add source</button>
-        {createSource.isError && <p role="alert">{createSource.error.message}</p>}
+        <MutationError isError={createSource.isError} error={createSource.error} />
       </form>
     </section>
   );

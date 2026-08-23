@@ -70,6 +70,18 @@ describe("SettingsScreen", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Rescan" })).toBeInTheDocument());
   });
 
+  it("shows an error message when rescanning a source fails", async () => {
+    server.use(
+      http.post("/api/sources/1/scan", () => HttpResponse.json({ error: "scan failed: source unreachable" }, { status: 500 }))
+    );
+    renderScreen();
+    await screen.findByText("Movies");
+
+    await userEvent.click(screen.getByRole("button", { name: "Rescan" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("scan failed: source unreachable");
+  });
+
   it("requires a confirmation click before removing a source", async () => {
     let deleted = false;
     server.use(

@@ -127,4 +127,16 @@ describe("ChannelScheduleScreen", () => {
 
     await waitFor(() => expect(deleted).toBe(true));
   });
+
+  it("shows an error message when removing a program fails", async () => {
+    server.use(
+      http.delete("/api/programs/1", () => HttpResponse.json({ error: "cannot remove: program is currently airing" }, { status: 500 }))
+    );
+    renderScreen();
+    await screen.findByText("06:00 PM – 07:30 PM");
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("cannot remove: program is currently airing");
+  });
 });

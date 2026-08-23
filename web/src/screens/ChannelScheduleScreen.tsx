@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
+import { MutationError } from "../components/MutationError";
 import { useChannel } from "../api/channels";
 import { useMediaItems } from "../api/media";
 import { useAddProgram, useDeleteProgram, useProgramsForChannel, useUpdateProgram } from "../api/programs";
@@ -54,6 +55,8 @@ export function ChannelScheduleScreen() {
   return (
     <section>
       <h1>{channel.name}</h1>
+      <MutationError isError={updateProgram.isError} error={updateProgram.error} />
+      <MutationError isError={deleteProgram.isError} error={deleteProgram.error} />
       <ul className="program-list">
         {sortedPrograms.map((program) => {
           const item = mediaById.get(program.media_item_id);
@@ -112,6 +115,7 @@ export function ChannelScheduleScreen() {
           />
         </label>
         <button type="submit" disabled={addProgram.isPending}>Add program</button>
+        <MutationError isError={addProgram.isError} error={addProgram.error} />
       </form>
     </section>
   );
