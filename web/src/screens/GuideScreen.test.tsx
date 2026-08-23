@@ -1,0 +1,95 @@
+import { render, screen } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestQueryClient, wrapWithQueryClient } from "../test/queryClient";
+import { server } from "../test/server";
+import { GuideScreen } from "./GuideScreen";
+
+const CHANNELS = [
+  { id: 1, name: "Movies", description: "", enabled: true, position: 0, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+  { id: 2, name: "Off Channel", description: "", enabled: false, position: 1, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+];
+const MEDIA = [
+  {
+    id: 1, source_id: 1, rel_path: "a.mp4", title: "Movie A", duration_sec: 3600,
+    video_codec: "h264", audio_codec: "aac", container: "mp4", size_bytes: 1,
+    mod_time: "2026-01-01T00:00:00Z", invalid: false,
+    created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+  },
+];
+const PROGRAMS_CH1 = [
+  { id: 1, channel_id: 1, media_item_id: 1, start_time: "2026-01-01T19:00:00Z", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+];
+
+function renderScreen() {
+  server.use(
+    http.get("/api/channels", () => HttpResponse.json(CHANNELS)),
+    http.get("/api/media", () => HttpResponse.json(MEDIA)),
+    http.get("/api/channels/1/programs", () => HttpResponse.json(PROGRAMS_CH1)),
+    http.get("/api/channels/2/programs", () => HttpResponse.json([]))
+  );
+  const client = createTestQueryClient();
+  return render(<GuideScreen />, { wrapper: wrapWithQueryClient(client) });
+}
+
+describe("GuideScreen", () => {
+  beforeEach(() => {
+    // Only Date is faked (not setTimeout/setInterval) so React Testing
+    // Library's async findBy*/waitFor polling — which relies on real
+    // timers — keeps working; only "what time is it" is under test control.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T18:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("renders a row only for enabled channels", async () => {
+    renderScreen();
+    expect(await screen.findByText("Movies")).toBeInTheDocument();
+    expect(screen.queryByText("Off Channel")).not.toBeInTheDocument();
+  });
+
+  it("renders the scheduled program and Off Air blocks for the surrounding gaps", async () => {
+    renderScreen();
+    await screen.findByText("Movies");
+    expect(await screen.findByText("Movie A")).toBeInTheDocument();
+    // Window is [17:00, 23:00); the one program runs 19:00-20:00, so there
+    // are two gaps: before it (17:00-19:00) and after it (20:00-23:00).
+    expect(screen.getAllByText("Off Air")).toHaveLength(2);
+  });
+
+  it("shows the now-line when the current time falls within the default window", async () => {
+    renderScreen();
+    await screen.findByText("Movies");
+    expect(screen.getByTestId("now-line")).toBeInTheDocument();
+  });
+
+  it("hides the now-line once the live clock drifts outside the default (mount-anchored) window", async () => {
+    // The default window is anchored at mount, not recentered every render
+    // (see GuideScreen.tsx) — so to observe it going stale we must mount at
+    // baseline, advance the clock afterward, and force a re-render, rather
+    // than jumping the clock before the first render (which would just
+    // anchor a brand-new window around the jumped time).
+    const { rerender } = renderScreen();
+    await screen.findByText("Movies");
+    expect(screen.getByTestId("now-line")).toBeInTheDocument();
+
+    vi.setSystemTime(new Date("2026-01-03T00:00:00Z"));
+    rerender(<GuideScreen />);
+
+    expect(screen.queryByTestId("now-line")).not.toBeInTheDocument();
+  });
+
+  it("shows an empty-state message when there are no enabled channels", async () => {
+    server.use(
+      http.get("/api/channels", () => HttpResponse.json([CHANNELS[1]])),
+      http.get("/api/media", () => HttpResponse.json([])),
+      http.get("/api/channels/2/programs", () => HttpResponse.json([]))
+    );
+    const client = createTestQueryClient();
+    render(<GuideScreen />, { wrapper: wrapWithQueryClient(client) });
+    expect(await screen.findByText("No enabled channels to show.")).toBeInTheDocument();
+  });
+});
