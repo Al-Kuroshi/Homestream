@@ -54,6 +54,14 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/channels/{id}/now", s.handleChannelNow)
 
 	if s.static != nil {
+		// Registered without this, any unmatched /api/* path (a typo'd
+		// endpoint, a wrong method, /api/ itself) would fall through to the
+		// SPA catch-all below and return 200 text/html instead of 404 —
+		// which web/src/api/http.ts's apiGet silently swallows into
+		// `undefined` rather than throwing ApiError, since res.ok is true.
+		// Go's ServeMux picks the most specific registered pattern, so the
+		// exact "GET /api/channels"-style routes above still win over this.
+		mux.Handle("/api/", http.NotFoundHandler())
 		mux.Handle("/", s.static)
 	}
 

@@ -1,12 +1,28 @@
 package web
 
 import (
+	"io/fs"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
+// skipUnlessBuilt skips the calling test when web/dist doesn't contain a
+// real build (i.e. `npm run build` hasn't been run yet, so distFS only
+// holds the tracked .gitkeep/.gitignore placeholders). Without this guard
+// these tests fail on a fresh clone instead of skipping, and the
+// fallback-routing test even passes vacuously (both responses are the same
+// placeholder directory listing).
+func skipUnlessBuilt(t *testing.T) {
+	t.Helper()
+	if _, err := fs.Stat(distFS, "dist/index.html"); err != nil {
+		t.Skip("web/dist not built (run `npm run build` in web/); skipping embedded-SPA test")
+	}
+}
+
 func TestHandler_ServesIndexAtRoot(t *testing.T) {
+	skipUnlessBuilt(t)
+
 	handler, err := Handler()
 	if err != nil {
 		t.Fatalf("Handler returned error: %v", err)
@@ -25,6 +41,8 @@ func TestHandler_ServesIndexAtRoot(t *testing.T) {
 }
 
 func TestHandler_FallsBackToIndexForClientRoutes(t *testing.T) {
+	skipUnlessBuilt(t)
+
 	handler, err := Handler()
 	if err != nil {
 		t.Fatalf("Handler returned error: %v", err)
