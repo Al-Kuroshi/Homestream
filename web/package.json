@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "postbuild": "mkdir -p dist && touch dist/.gitkeep && printf '*\\n!.gitignore\\n!.gitkeep\\n' > dist/.gitignore",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
