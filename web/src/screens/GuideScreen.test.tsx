@@ -82,6 +82,25 @@ describe("GuideScreen", () => {
     expect(screen.queryByTestId("now-line")).not.toBeInTheDocument();
   });
 
+  it("polls channels and media every 30s to catch schedule changes made elsewhere", async () => {
+    server.use(
+      http.get("/api/channels", () => HttpResponse.json(CHANNELS)),
+      http.get("/api/media", () => HttpResponse.json(MEDIA)),
+      http.get("/api/channels/1/programs", () => HttpResponse.json(PROGRAMS_CH1)),
+      http.get("/api/channels/2/programs", () => HttpResponse.json([]))
+    );
+    const client = createTestQueryClient();
+    render(<GuideScreen />, { wrapper: wrapWithQueryClient(client) });
+    await screen.findByText("Movies");
+
+    function refetchIntervalFor(queryKey: string[]) {
+      const options = client.getQueryCache().find({ queryKey })?.options as { refetchInterval?: number } | undefined;
+      return options?.refetchInterval;
+    }
+    expect(refetchIntervalFor(["channels"])).toBe(30_000);
+    expect(refetchIntervalFor(["media"])).toBe(30_000);
+  });
+
   it("shows an empty-state message when there are no enabled channels", async () => {
     server.use(
       http.get("/api/channels", () => HttpResponse.json([CHANNELS[1]])),

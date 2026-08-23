@@ -1,7 +1,7 @@
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { useChannels } from "../api/channels";
-import { useMediaItems } from "../api/media";
+import { listChannels } from "../api/channels";
+import { listMedia } from "../api/media";
 import { listPrograms } from "../api/programs";
 import { buildTimeline, defaultGuideWindow, joinProgramsWithMedia, type TimelineBlock } from "../scheduling/guide";
 import { formatTimeRange } from "../scheduling/time";
@@ -11,8 +11,23 @@ const POLL_INTERVAL_MS = 30_000;
 const NOW_TICK_MS = 60_000;
 
 export function GuideScreen() {
-  const { data: channels, isLoading: channelsLoading, isError: channelsError } = useChannels();
-  const { data: media, isLoading: mediaLoading, isError: mediaError } = useMediaItems();
+  // Bypass the shared useChannels()/useMediaItems() convenience hooks here:
+  // this screen needs channels/media to poll every 30s to catch schedule
+  // changes made elsewhere (spec §4.1), but adding a default
+  // refetchInterval to those hooks would poll on every screen that uses
+  // them. Reusing the identical query keys keeps the cache shared with
+  // other screens (their reads still benefit from this polling and vice
+  // versa) without touching api/channels.ts or api/media.ts.
+  const { data: channels, isLoading: channelsLoading, isError: channelsError } = useQuery({
+    queryKey: ["channels"],
+    queryFn: listChannels,
+    refetchInterval: POLL_INTERVAL_MS,
+  });
+  const { data: media, isLoading: mediaLoading, isError: mediaError } = useQuery({
+    queryKey: ["media"],
+    queryFn: listMedia,
+    refetchInterval: POLL_INTERVAL_MS,
+  });
 
   // The default window is anchored once, at mount, rather than recomputed
   // from a moving "now" on every render: recentering it every tick would
