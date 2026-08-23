@@ -13,10 +13,19 @@ type Server struct {
 	items    repository.MediaItemRepository
 	scanner  *mediastore.Scanner
 	channels *channels.Service
+	static   http.Handler
 }
 
 func NewServer(sources repository.MediaSourceRepository, items repository.MediaItemRepository, scanner *mediastore.Scanner, channelSvc *channels.Service) *Server {
 	return &Server{sources: sources, items: items, scanner: scanner, channels: channelSvc}
+}
+
+// SetStaticHandler registers the handler used for any request that doesn't
+// match /healthz or /api/*, e.g. the embedded frontend SPA (see
+// cmd/personaltv/main.go). If never called, unmatched paths 404 as before
+// — every existing test and NewServer call site is unaffected.
+func (s *Server) SetStaticHandler(h http.Handler) {
+	s.static = h
 }
 
 func (s *Server) Routes() http.Handler {
@@ -43,6 +52,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/programs/{id}", s.handleDeleteProgram)
 
 	mux.HandleFunc("GET /api/channels/{id}/now", s.handleChannelNow)
+
+	if s.static != nil {
+		mux.Handle("/", s.static)
+	}
 
 	return mux
 }

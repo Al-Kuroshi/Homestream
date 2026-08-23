@@ -15,6 +15,7 @@ import (
 	"personaltv/internal/db"
 	"personaltv/internal/mediastore"
 	"personaltv/internal/repository/sqlite"
+	"personaltv/web"
 )
 
 func main() {
@@ -36,6 +37,12 @@ func main() {
 	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
 
 	server := api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
+
+	webHandler, err := web.Handler()
+	if err != nil {
+		log.Fatalf("failed to load embedded frontend: %v", err)
+	}
+	server.SetStaticHandler(webHandler)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
