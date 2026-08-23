@@ -1,33 +1,48 @@
 # Personal TV — Progress / Session Handoff
 
-**Last updated:** 2026-08-22
+**Last updated:** 2026-08-23
 
 This file exists so a new session (human or Claude Code) can pick up where the last one left off without re-reading the whole conversation history. It tracks *where we are*, not *what the product is* — for that, see the docs below.
 
 ## Where things live
 
 - **Product requirements (canonical):** `docs/prd/HomeStreamer.md`
-- **Technical design spec:** `docs/design/2026-08-21-personal-tv-design.md`
-- **Implementation plan (Plan 1 — Core Backend):** `docs/plans/2026-08-21-personal-tv-core-backend.md`
+- **Technical design spec (backend):** `docs/design/2026-08-21-personal-tv-design.md`
+- **Technical design spec (frontend):** `docs/design/2026-08-23-personal-tv-frontend-foundation-design.md`
+- **Implementation plan (Plan 1 — Core Backend):** `docs/plans/2026-08-21-personal-tv-core-backend.md` — merged.
+- **Implementation plan (Plan 2 — Frontend Foundation):** `docs/plans/2026-08-23-personal-tv-frontend-foundation.md` — complete, ready to merge (see Status).
 - **Repo guidance for Claude Code:** `CLAUDE.md`
-- **You are here:** git worktree `personal-tv-core-backend`, branch `worktree-personal-tv-core-backend`, 19 commits ahead of `main`. Ready to integrate — the `superpowers:finishing-a-development-branch` skill is running now to decide how this branch reaches `main`.
+- **You are here:** git worktree `personal-tv-frontend-foundation`, branch `worktree-personal-tv-frontend-foundation`, ready to integrate via `superpowers:finishing-a-development-branch`.
 
 ## Status
 
-PRD and design spec are done and approved. Plan 1 (core backend: DB, media scanner, scheduler, channels service, REST API) is **fully implemented, tested, and reviewed** — all 12 tasks complete, a final whole-branch review, its fix wave, and one additional emergent Critical fix (see below) all landed and independently re-reviewed clean. Build/vet/gofmt/`go test ./... -race` all pass. The SDD execution ledger for this plan has been deleted (its job was done) — the record now lives in git history, starting at commit `545ab4f`.
+**Backend (Plan 1):** merged to `main`. Go, SQLite, media scanner, scheduler, channels service, REST API — all working, tested, `go test ./... -race` clean.
 
-The final fix wave's own re-review had caught a bug created by the interaction of two of its own fixes: making the media scanner tolerant of directory-walk errors, combined with now-correctly-enforced foreign keys, meant an unreachable root media directory (e.g. a dropped NAS mount) got misread as "the user deleted everything" — the scanner would prune the entire media library, and `ON DELETE CASCADE` would take every scheduled program with it. Silent, permanent data loss from a routine failure. This was surfaced to the user before merging (per the SDD skill's own rule for load-bearing findings found outside its normal fix-wave budget), fixed in commit `5c3b027` (skip pruning whenever the walk observed any traversal error; regression test `TestScanner_RootWalkErrorDoesNotPruneExistingItems`), and independently re-reviewed clean — no new breakage, existing prune/scan tests unaffected.
+**Frontend (Plan 2 — this branch):** all 12 tasks complete, final whole-branch review done, its one fix wave landed and independently re-reviewed clean. React + TypeScript SPA (Vite/Vitest/MSW) covering Guide (EPG timeline grid with off-air-gap rendering), Media Library, Channels (list + schedule editor), and Settings (media sources) — all against the existing backend REST API, no backend changes except the additive `go:embed` static-serving wiring. `go build/vet/test ./...` and `cd web && npx tsc -b && npm run lint && npm test` (76 tests) all clean. `go run ./cmd/personaltv` serves the built SPA end-to-end (manually verified via curl during the final review).
+
+During implementation, several real bugs were caught and fixed by implementers/reviewers rather than shipped silently — worth knowing about if you're touching this code:
+- A missing app-wide `QueryClientProvider` (the real app would have crashed on first render of any data-fetching screen) — fixed in the Task 5 fix round.
+- A scheduling-math bug where the Guide's off-air-gap logic didn't clip overlapping programs, so two overlapping programs would render as two overlapping blocks — fixed in Task 10.
+- A tautology bug in the Guide's "now" indicator: the visible time window was recomputed every render from the same clock used to test whether the line should show, which is mathematically always true — the line could never actually move. Fixed in Task 11 by anchoring the window at mount.
+- A `go test ./...` failure on a fresh clone (the embed tests asserted on real built content that doesn't exist before `npm run build` has run) — fixed in the final review's fix wave with a skip guard.
+- Unmatched `/api/*` requests (typos, wrong methods) were silently falling through to the SPA and returning `200 text/html`, which broke the frontend's own error handling (`apiGet` would resolve with `undefined` instead of throwing) — fixed with an explicit `/api/` 404 registered before the SPA catch-all.
+- A UTC/local time display mismatch: users typed a local start time but saw it echoed back in UTC with no indication — fixed by making display match input (local time throughout), with tests pinned to `TZ=UTC` for determinism instead.
 
 ## Next step
 
-Backend (Plan 1) is done. Next up per the plan's stated 4-plan breakdown: playback (direct-play/transcode), the frontend SPA, and Docker packaging — none of those plans have been written yet. Three Minor findings from the final review are parked as deferred, not blocking: transient-DB-error mapping to 404 in a couple of handlers, an undocumented `DurationSec<=0` skip condition, and a test-only stale-pooled-connection landmine.
+Two things to track, both flagged during the final whole-branch review and deliberately not fixed on this branch:
 
-## Key decisions made (see the design spec for full reasoning)
+1. **Mutation error handling (design spec §6) is a real, systemic gap.** Spec says failed mutations (add/remove/rescan/create/delete) should show an inline error message near the action that failed. Right now this is implemented in exactly one place — Settings' "add source" form — out of roughly 13 mutation call sites across the Channels, Channel Schedule, and Settings screens. Failed deletes/renames/rescans currently fail silently with zero user feedback. This wasn't fixed on this branch because it's properly sized as its own small plan (a shared error-banner pattern + a test per screen), not a patch. **Do this as an actual follow-up plan before this is considered done**, not just left as a mental note — this file is that durable tracking, since the SDD execution ledger that originally caught this has been deleted per process (the record now lives in git history starting at the frontend branch's merge-base with `main`).
+2. **TV/player screen** is still not built — it needs Plan 3 (playback: direct-play/transcode), which doesn't exist yet, same as noted before the frontend work started. Once playback exists, TV is the one remaining screen from the PRD's five.
+
+Minor, non-blocking items parked during the frontend's final review (fine to pick up opportunistically, not tracked further than this list): no column-sorting on the Media Library table (design spec says "sortable", never implemented); a reorder test in `ChannelsListScreen.test.tsx` that doesn't check *which* channel got which position; a white-box test asserting Guide's polling interval via the query cache rather than observed behavior; no `AppRoutes.test.tsx` coverage for the `/channels/:id` route; a couple of cache-invalidation completeness gaps (deleting a source doesn't invalidate the media query key; deleting a channel doesn't invalidate its programs key) mitigated today by TanStack Query's default refetch-on-mount; an unused `channelId` field on `UpdateProgramInput`/`DeleteProgramInput`; one un-memoized lookup in `ChannelScheduleScreen.tsx` (Guide's equivalent is memoized); no overlap warning in the schedule editor (the Guide now clips overlaps gracefully, but nothing tells the user they created one); missing assets return `200 text/html` (SPA fallback) instead of `404`; no delete-confirmation on channels (Settings has this pattern for sources, Channels doesn't); and a `/// <reference types="node" />` in `web/src/test/setup.ts` that leaks `@types/node`'s ambient globals across the whole `tsconfig.app.json` compilation unit rather than staying scoped to that one file (low practical risk today — nothing else uses `process`/`Buffer` — but worth knowing if a future browser-code file accidentally references a Node global and type-checks successfully before crashing at runtime).
+
+## Key decisions made (see the design specs for full reasoning)
 
 - **Backend:** Go, single static binary, `modernc.org/sqlite` (pure-Go, no CGO).
-- **Frontend:** not built yet — Plan 1 was backend-only by design (see the plan's intro for the full 4-plan breakdown: core backend → playback → frontend SPA → Docker packaging).
+- **Frontend:** React + TypeScript SPA (Vite), embedded into the Go binary via `go:embed`. Plain CSS (no UI framework), React Router, TanStack Query, Vitest/RTL/MSW for testing. See the frontend design spec for the full rationale (persistent sidebar nav, timeline-grid Guide over a simpler now/next list, no drag-and-drop scheduling, Settings scoped to media sources only).
 - **Database:** SQLite behind repository interfaces, swappable to PostgreSQL later without touching business logic.
 - **Media source (MVP):** local filesystem only, including NAS/network shares via a Docker bind mount.
 - **Metadata/subtitles:** no internet enrichment in MVP — filename + `ffprobe` technical metadata only.
-- **Scheduling:** pure function of `(schedule, wall clock)`, recomputed on demand — no background ticking process, nothing lost on restart.
+- **Scheduling:** pure function of `(schedule, wall clock)`, recomputed on demand — no background ticking process, nothing lost on restart. Off-air gaps between programs are a first-class state, not an error, on both backend and frontend.
 - **Media scanning:** manual rescan only for MVP, no filesystem watcher.
