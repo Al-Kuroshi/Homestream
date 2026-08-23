@@ -101,6 +101,34 @@ describe("GuideScreen", () => {
     expect(refetchIntervalFor(["media"])).toBe(30_000);
   });
 
+  it("shows a Schedule unavailable state (not Off Air) when a channel's programs request fails, without affecting other rows", async () => {
+    server.use(
+      http.get("/api/channels", () => HttpResponse.json(CHANNELS)),
+      http.get("/api/media", () => HttpResponse.json(MEDIA)),
+      http.get("/api/channels/1/programs", () => HttpResponse.json(PROGRAMS_CH1)),
+      http.get("/api/channels/2/programs", () => HttpResponse.json([]))
+    );
+    // CHANNELS only has one enabled channel (id 1, "Movies"); add a second
+    // enabled channel whose programs request fails, so we can assert its
+    // row shows "Schedule unavailable" while channel 1's row is unaffected.
+    const CHANNELS_WITH_FAILING = [
+      CHANNELS[0],
+      { id: 3, name: "Broken", description: "", enabled: true, position: 2, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+    ];
+    server.use(
+      http.get("/api/channels", () => HttpResponse.json(CHANNELS_WITH_FAILING)),
+      http.get("/api/channels/3/programs", () => HttpResponse.json({ error: "boom" }, { status: 500 }))
+    );
+    const client = createTestQueryClient();
+    render(<GuideScreen />, { wrapper: wrapWithQueryClient(client) });
+
+    expect(await screen.findByText("Schedule unavailable")).toBeInTheDocument();
+    // Channel 1's row is unaffected: it still renders its real program and
+    // Off Air gaps, not the error state.
+    expect(await screen.findByText("Movie A")).toBeInTheDocument();
+    expect(screen.getAllByText("Off Air")).toHaveLength(2);
+  });
+
   it("shows an empty-state message when there are no enabled channels", async () => {
     server.use(
       http.get("/api/channels", () => HttpResponse.json([CHANNELS[1]])),

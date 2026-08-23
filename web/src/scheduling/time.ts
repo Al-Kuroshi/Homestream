@@ -7,13 +7,15 @@ export function computeEndTime(startTimeIso: string, durationSec: number): Date 
   return new Date(new Date(startTimeIso).getTime() + durationSec * 1000);
 }
 
-// Deliberately UTC: the MVP has no per-user timezone setting anywhere in
-// the backend or this plan, and formatting in the viewer's local timezone
-// here would make this function's output timezone-dependent and untestable
-// without mocking the system clock. Displaying local time is a reasonable
-// future enhancement, not built in this plan.
+// Formats in the browser's local timezone — matching toDatetimeLocalValue
+// below, since <input type="datetime-local"> is always local time per the
+// HTML spec. Start times are entered in local time (via that input), so
+// they must be displayed in local time too; hardcoding UTC here would
+// silently show users a different time than the one they typed. The test
+// suite pins TZ=UTC (see web/src/test/setup.ts) so this stays deterministic
+// without mocking the system clock.
 export function formatTimeRange(start: Date, end: Date): string {
-  const fmt = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+  const fmt = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit" });
   return `${fmt.format(start)} – ${fmt.format(end)}`;
 }
 

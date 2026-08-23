@@ -1,32 +1,44 @@
-# React + TypeScript + Vite
+# Personal TV — frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+This is the Personal TV (HomeStreamer) frontend: a React + TypeScript single-page
+app that talks to the Go backend's REST API (`internal/api`) to manage media
+sources, browse the library, configure channels and their schedules, and view
+the electronic program guide (EPG).
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+`npm run dev` starts the Vite dev server and proxies `/api/*` requests to a
+Go backend running on `:8080` (see `vite.config.ts`). Run the backend
+alongside it from the repo root:
+
+```bash
+go run ./cmd/personaltv
+```
+
+## Testing
+
+```bash
+npm test
+```
+
+Tests are colocated with the code they test (e.g. `Foo.tsx` / `Foo.test.tsx`)
+and use MSW to mock the API at the network boundary rather than mocking
+`web/src/api/*` calls directly — the same black-box, real-dependencies spirit
+as the Go backend's test conventions (see the repo root `CLAUDE.md`).
+
+## Building
+
+```bash
+npm run build
+```
+
+This type-checks and produces a production build in `web/dist`. A real
+`npm run build` must be run here **before** `go build`/`go run` at the repo
+root for the embedded SPA (`web/embed.go`, via `go:embed`) to serve real
+content — otherwise the Go binary only embeds the tracked placeholder files
+in `web/dist`.

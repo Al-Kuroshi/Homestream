@@ -41,6 +41,12 @@
   font-style: italic;
 }
 
+.guide-block-error {
+  background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+  font-style: italic;
+}
+
 .guide-now-line {
   position: absolute;
   top: 0;

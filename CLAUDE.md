@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-The core backend is implemented: Go module `personaltv` (Go 1.22+), SQLite data layer, local-filesystem media scanner, pure scheduling logic, channels service, and a REST API (`internal/db`, `internal/model`, `internal/repository`, `internal/mediastore`, `internal/scheduler`, `internal/channels`, `internal/api`, wired in `cmd/personaltv`). No frontend, playback streaming, or Docker packaging yet — those are separate, not-yet-written plans (see `docs/plans/`).
+The core backend is implemented: Go module `personaltv` (Go 1.22+), SQLite data layer, local-filesystem media scanner, pure scheduling logic, channels service, and a REST API (`internal/db`, `internal/model`, `internal/repository`, `internal/mediastore`, `internal/scheduler`, `internal/channels`, `internal/api`, wired in `cmd/personaltv`).
+
+The frontend also now exists: a React + TypeScript SPA in `web/` (Vite-scaffolded) with all 5 MVP screens complete (Sources, Library, Channels, Channel Schedule, Guide), talking to the backend exclusively through `web/src/api/*`. It's embedded into the Go binary at build time via `go:embed` (`web/embed.go`) and served for any non-`/api`, non-`/healthz` path (`internal/api/router.go`), so a single Go binary serves both the API and the UI in production. Playback streaming and Docker packaging are still not implemented — those remain separate, not-yet-written plans (see `docs/plans/`).
 
 `ffmpeg`/`ffprobe` must be installed and on `PATH` to build the mental model of and to run this repo's tests (several tests generate short synthetic videos with `ffmpeg` and probe them with `ffprobe`).
 
@@ -16,6 +18,25 @@ go test ./...                   # test
 go test ./... -race             # test with race detector (use before merging/finishing a branch)
 go test ./internal/mediastore/... -run TestScanner -v   # run a single package/test pattern
 ```
+
+Frontend commands (run from `web/`):
+
+```bash
+cd web && npm install           # install dependencies
+npm test                        # test (Vitest)
+npm run build                   # type-check + production build into web/dist
+npm run lint                    # lint (oxlint)
+npm run dev                     # dev server; proxies /api/* to a Go backend on :8080 (run `go run ./cmd/personaltv` alongside it)
+```
+
+**Build order matters for a real production binary.** `web/embed.go` embeds
+whatever is in `web/dist` at Go build time. On a fresh clone, `web/dist`
+holds only tracked placeholder files (`.gitkeep`/`.gitignore`), so `go build`
+still succeeds but embeds a placeholder, not the real UI. Run `npm run build`
+in `web/` first, *then* `go build`/`go run` at the repo root, to get a binary
+that serves the real SPA. `web/embed_test.go`'s tests skip automatically
+(with a clear message) when `web/dist` isn't built, rather than failing or
+passing vacuously.
 
 There is no Dockerfile/Docker Compose setup yet, despite Docker Compose being the intended deployment method (see below) — that lands with a future packaging plan.
 
@@ -51,6 +72,13 @@ real HTTP calls, rather than testing one layer in isolation.
 - **Tests are written test-first.** New work in this repo should keep
   following that: write the failing test, confirm it fails, then
   implement.
+
+The above is specifically about the Go backend's tests. The frontend
+(`web/`) follows the equivalent spirit in its own idiom: tests are colocated
+with the code they test (`Foo.tsx` / `Foo.test.tsx`), black-box by default
+(rendering components and asserting on what a user would see), and mock the
+API at the network boundary with MSW rather than mocking `web/src/api/*`
+calls directly.
 
 ## What this product is
 

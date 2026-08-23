@@ -63,7 +63,11 @@ export function GuideScreen() {
   if (channelsError || mediaError) return <p role="alert">Failed to load the guide.</p>;
 
   const rows = (channels ?? [])
-    .map((channel, index) => ({ channel, programs: programQueries[index]?.data ?? [] }))
+    .map((channel, index) => ({
+      channel,
+      programs: programQueries[index]?.data ?? [],
+      isError: programQueries[index]?.isError ?? false,
+    }))
     .filter((row) => row.channel.enabled);
 
   const showNowLine = now >= windowStart && now < windowEnd;
@@ -76,16 +80,20 @@ export function GuideScreen() {
         {showNowLine && (
           <div className="guide-now-line" data-testid="now-line" style={{ left: `${nowPercent}%` }} />
         )}
-        {rows.map(({ channel, programs }) => {
-          const joined = joinProgramsWithMedia(programs, mediaById);
-          const timeline = buildTimeline(joined, windowStart, windowEnd);
+        {rows.map(({ channel, programs, isError }) => {
           return (
             <div className="guide-row" key={channel.id}>
               <div className="guide-channel-name">{channel.name}</div>
               <div className="guide-timeline">
-                {timeline.map((block, i) => (
-                  <TimelineBlockView key={i} block={block} totalMs={totalMs} />
-                ))}
+                {isError ? (
+                  <div className="guide-block guide-block-error" style={{ width: "100%" }}>
+                    Schedule unavailable
+                  </div>
+                ) : (
+                  buildTimeline(joinProgramsWithMedia(programs, mediaById), windowStart, windowEnd).map(
+                    (block, i) => <TimelineBlockView key={i} block={block} totalMs={totalMs} />
+                  )
+                )}
               </div>
             </div>
           );
