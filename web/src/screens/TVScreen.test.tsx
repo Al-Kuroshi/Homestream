@@ -6,9 +6,43 @@ import { createTestQueryClient, wrapWithQueryClient } from "../test/queryClient"
 import { server } from "../test/server";
 import { TVScreen } from "./TVScreen";
 
+// The mock exposes buttons that call the onError/onTimeUpdate props it
+// receives, so tests can simulate video playback events (a fatal video
+// error, or the video element reporting its currentTime) that the real
+// <video> element would normally trigger — neither of which vitest/jsdom
+// can produce on its own.
 vi.mock("../components/VideoPlayer", () => ({
-  VideoPlayer: (props: { mode: string; src: string; offsetSec?: number }) => (
-    <div data-testid="video-player" data-mode={props.mode} data-src={props.src} data-offset={props.offsetSec} />
+  VideoPlayer: (props: {
+    mode: string;
+    src: string;
+    offsetSec?: number;
+    onError: () => void;
+    onTimeUpdate?: (currentTimeSec: number) => void;
+  }) => (
+    <div data-testid="video-player" data-mode={props.mode} data-src={props.src} data-offset={props.offsetSec}>
+      <button onClick={() => props.onError()}>Simulate video error</button>
+      <button onClick={() => props.onTimeUpdate?.(50)}>Report currentTime 50</button>
+      <button onClick={() => props.onTimeUpdate?.(8)}>Report currentTime 8</button>
+    </div>
+  ),
+}));
+
+// Mocked (rather than left real) so tests can assert on the exact
+// currentTimeSec TVScreen computes and passes down, the same way the
+// VideoPlayer mock above exposes data-mode/data-src/data-offset. Still
+// renders title/next as plain text so the earlier tests that assert on
+// "Movie A" / "Next: Movie B" keep working unchanged.
+vi.mock("../components/NowPlayingOverlay", () => ({
+  NowPlayingOverlay: (props: {
+    title: string;
+    currentTimeSec: number;
+    durationSec: number;
+    nextTitle: string | null;
+  }) => (
+    <div data-testid="now-playing-overlay" data-current-time-sec={props.currentTimeSec} data-duration-sec={props.durationSec}>
+      <p>{props.title}</p>
+      {props.nextTitle && <p>Next: {props.nextTitle}</p>}
+    </div>
   ),
 }));
 
@@ -183,5 +217,68 @@ describe("TVScreen", () => {
     await screen.findByText("Movie A");
     fireEvent.click(await screen.findByLabelText("Next channel"));
     expect(await screen.findByText("Movie B")).toBeInTheDocument();
+  });
+
+  it("shows the error state with Retry when VideoPlayer reports a playback error, and retry re-attempts tune-in", async () => {
+    let watchCallCount = 0;
+    server.use(
+      http.post("/api/channels/1/watch", () => {
+        watchCallCount += 1;
+        return HttpResponse.json({ status: "playing", mode: "direct", media_item_id: 5, offset_sec: 0 });
+      }),
+      http.get("/api/channels/1/now", () =>
+        HttpResponse.json({ channel_id: 1, current: null, offset_sec: 0, next: null })
+      )
+    );
+    renderScreen();
+
+    await screen.findByTestId("video-player");
+    expect(watchCallCount).toBe(1);
+
+    fireEvent.click(screen.getByText("Simulate video error"));
+
+    expect(await screen.findByText("Something went wrong tuning in.")).toBeInTheDocument();
+    expect(screen.getByText("Retry")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Retry"));
+
+    await screen.findByTestId("video-player");
+    expect(watchCallCount).toBe(2);
+  });
+
+  it("passes the raw reported currentTime straight through to NowPlayingOverlay in direct mode", async () => {
+    server.use(
+      http.post("/api/channels/1/watch", () =>
+        HttpResponse.json({ status: "playing", mode: "direct", media_item_id: 5, offset_sec: 42 })
+      ),
+      http.get("/api/channels/1/now", () =>
+        HttpResponse.json({ channel_id: 1, current: null, offset_sec: 42, next: null })
+      )
+    );
+    renderScreen();
+
+    await screen.findByTestId("video-player");
+    fireEvent.click(screen.getByText("Report currentTime 50"));
+
+    const overlay = await screen.findByTestId("now-playing-overlay");
+    expect(overlay).toHaveAttribute("data-current-time-sec", "50");
+  });
+
+  it("adds offsetSec back on top of the raw reported currentTime in hls mode", async () => {
+    server.use(
+      http.post("/api/channels/1/watch", () =>
+        HttpResponse.json({ status: "playing", mode: "hls", media_item_id: 5, offset_sec: 42, session_id: "abc" })
+      ),
+      http.get("/api/channels/1/now", () =>
+        HttpResponse.json({ channel_id: 1, current: null, offset_sec: 42, next: null })
+      )
+    );
+    renderScreen();
+
+    await screen.findByTestId("video-player");
+    fireEvent.click(screen.getByText("Report currentTime 8"));
+
+    const overlay = await screen.findByTestId("now-playing-overlay");
+    expect(overlay).toHaveAttribute("data-current-time-sec", "50");
   });
 });
