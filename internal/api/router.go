@@ -73,6 +73,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/programs/{id}", s.handleDeleteProgram)
 
 	mux.HandleFunc("GET /api/channels/{id}/now", s.handleChannelNow)
+	mux.HandleFunc("POST /api/channels/{id}/watch", s.handleChannelWatch)
 
 	if s.static != nil {
 		// Registered without this, any unmatched /api/* path (a typo'd

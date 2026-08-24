@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"personaltv/internal/playback"
 )
@@ -91,4 +92,37 @@ func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.ServeContent(w, r, file, info.ModTime(), f)
+}
+
+func (s *Server) handleChannelWatch(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if _, err := s.channels.GetChannel(r.Context(), id); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+
+	result, err := s.playback.TuneIn(r.Context(), id, time.Now())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, watchResponse{
+		Status:      result.Status,
+		Mode:        result.Mode,
+		MediaItemID: result.MediaItemID,
+		OffsetSec:   result.OffsetSec,
+		SessionID:   result.SessionID,
+	})
+}
+
+type watchResponse struct {
+	Status      string  `json:"status"`
+	Mode        string  `json:"mode,omitempty"`
+	MediaItemID int64   `json:"media_item_id,omitempty"`
+	OffsetSec   float64 `json:"offset_sec,omitempty"`
+	SessionID   string  `json:"session_id,omitempty"`
 }

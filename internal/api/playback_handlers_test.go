@@ -218,3 +218,50 @@ func TestPlaybackSession_RejectsPathTraversal(t *testing.T) {
 		t.Fatal("expected a path-traversal attempt to be rejected, got 200")
 	}
 }
+
+func TestChannelWatch_ReturnsOffAirForChannelWithNothingScheduled(t *testing.T) {
+	srv := newTestServer(t)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	chResp, err := http.Post(ts.URL+"/api/channels", "application/json", strings.NewReader(`{"name":"Empty"}`))
+	if err != nil {
+		t.Fatalf("create channel failed: %v", err)
+	}
+	defer chResp.Body.Close()
+	var channel struct {
+		ID int64 `json:"id"`
+	}
+	json.NewDecoder(chResp.Body).Decode(&channel)
+
+	watchResp, err := http.Post(ts.URL+"/api/channels/"+strconv.FormatInt(channel.ID, 10)+"/watch", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST watch failed: %v", err)
+	}
+	defer watchResp.Body.Close()
+	if watchResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", watchResp.StatusCode)
+	}
+	var result struct {
+		Status string `json:"status"`
+	}
+	json.NewDecoder(watchResp.Body).Decode(&result)
+	if result.Status != "off_air" {
+		t.Errorf("expected status off_air, got %q", result.Status)
+	}
+}
+
+func TestChannelWatch_404sForUnknownChannel(t *testing.T) {
+	srv := newTestServer(t)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/channels/999/watch", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST watch failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 for an unknown channel, got %d", resp.StatusCode)
+	}
+}
