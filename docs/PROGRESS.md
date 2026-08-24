@@ -12,9 +12,9 @@ This file exists so a new session (human or Claude Code) can pick up where the l
 - **Technical design spec (playback):** `docs/design/2026-08-23-personal-tv-playback-design.md` — approved, implementation plan being written now (see Status).
 - **Implementation plan (Plan 1 — Core Backend):** `docs/plans/2026-08-21-personal-tv-core-backend.md` — merged.
 - **Implementation plan (Plan 2 — Frontend Foundation):** `docs/plans/2026-08-23-personal-tv-frontend-foundation.md` — merged.
-- **Implementation plan (Plan 3 — Playback Backend):** not yet written — in progress, see Status.
+- **Implementation plan (Plan 3 — Playback Backend):** `docs/plans/2026-08-23-personal-tv-playback-backend.md` — written, ready to execute.
 - **Repo guidance for Claude Code:** `CLAUDE.md`
-- **You are here:** working directly on `main` (no active worktree). Plan 1 (backend), Plan 2 (frontend), and the mutation-error-handling follow-up are all merged. Plan 3 (playback backend) has an approved design spec; the implementation plan document is being written next, then it'll run through the same subagent-driven-development process as Plans 1 and 2.
+- **You are here:** working directly on `main` (no active worktree). Plan 1 (backend), Plan 2 (frontend), and the mutation-error-handling follow-up are all merged. Plan 3 (playback backend) has an approved design spec and a written implementation plan (6 tasks); it's about to run through the same subagent-driven-development process as Plans 1 and 2.
 
 ## Status
 
@@ -34,7 +34,7 @@ During implementation, several real bugs were caught and fixed by implementers/r
 
 ## Next step
 
-**Plan 3 (playback backend)** is in progress: the design spec (`docs/design/2026-08-23-personal-tv-playback-design.md`) is approved — a new `internal/playback` package (compatibility matrix, tune-in orchestration with missing-file exclusion, in-memory `SessionManager` with idle-timeout-only cleanup, `ffmpeg`-based HLS transcoding) plus three new REST endpoints (`POST /api/channels/{id}/watch`, `GET /api/media/{id}/stream`, `GET /api/playback/sessions/{id}/{file}`), added additively with zero changes to any existing route. The implementation plan document itself is being written next.
+**Plan 3 (playback backend)** is ready to execute: design spec approved, implementation plan written (`docs/plans/2026-08-23-personal-tv-playback-backend.md`, 6 tasks) — a new `internal/playback` package (compatibility matrix, tune-in orchestration with missing-file exclusion, in-memory `SessionManager` with idle-timeout-only cleanup, `ffmpeg`-based HLS transcoding) plus three new REST endpoints (`POST /api/channels/{id}/watch`, `GET /api/media/{id}/stream`, `GET /api/playback/sessions/{id}/{file}`), added additively with zero changes to any existing route.
 
 **TV/player screen** is still not built — it's a separate, smaller follow-up plan once the playback endpoints exist and are curl-able (mirroring how Plan 1 shipped before any UI existed). Docker packaging is also not started.
 
