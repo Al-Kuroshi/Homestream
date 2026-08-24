@@ -1,8 +1,11 @@
 package api
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"personaltv/internal/playback"
@@ -42,4 +45,50 @@ func (s *Server) handleMediaStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeContent(w, r, item.Title, info.ModTime(), f)
+}
+
+func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	file := r.PathValue("file")
+
+	sess, ok := s.playback.GetSession(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, errors.New("no such playback session"))
+		return
+	}
+	if failed, ferr := sess.Failed(); failed {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("playback session failed: %w", ferr))
+		return
+	}
+
+	// file must be a plain filename within the session's own directory —
+	// no path traversal (e.g. "../../etc/passwd") outside it.
+	if file != filepath.Base(file) {
+		writeError(w, http.StatusBadRequest, errors.New("invalid file name"))
+		return
+	}
+	path := filepath.Join(sess.Dir, file)
+
+	f, err := os.Open(path)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	defer f.Close()
+
+	s.playback.TouchSession(id)
+
+	switch filepath.Ext(file) {
+	case ".m3u8":
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	case ".ts":
+		w.Header().Set("Content-Type", "video/mp2t")
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	http.ServeContent(w, r, file, info.ModTime(), f)
 }

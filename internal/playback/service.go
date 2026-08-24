@@ -20,3 +20,22 @@ type Service struct {
 func NewService(channelSvc *channels.Service, sources repository.MediaSourceRepository, items repository.MediaItemRepository, sessions *SessionManager) *Service {
 	return &Service{channels: channelSvc, sources: sources, items: items, sessions: sessions}
 }
+
+// GetSession and TouchSession delegate to the underlying SessionManager —
+// the session-serving HTTP handler (internal/api) only ever talks to
+// Service, never to a SessionManager directly.
+func (svc *Service) GetSession(id string) (*Session, bool) {
+	return svc.sessions.Get(id)
+}
+
+func (svc *Service) TouchSession(id string) {
+	svc.sessions.Touch(id)
+}
+
+// StartTestSession starts a real transcode session directly against the
+// given media path, bypassing TuneIn's schedule/compatibility logic
+// entirely. Exported only for tests that need a real session to exist
+// without depending on Task 5's tune-in orchestration.
+func (svc *Service) StartTestSession(mediaPath string) (*Session, error) {
+	return svc.sessions.StartSession(mediaPath, 0)
+}

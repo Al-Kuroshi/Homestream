@@ -13,12 +13,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"personaltv/internal/api"
 	"personaltv/internal/channels"
 	"personaltv/internal/db"
 	"personaltv/internal/mediastore"
 	"personaltv/internal/model"
+	"personaltv/internal/playback"
 	"personaltv/internal/repository/sqlite"
 )
 
@@ -31,7 +33,12 @@ func newTestServer(t *testing.T) *api.Server {
 	programRepo := sqlite.NewProgramRepository(conn)
 	scanner := mediastore.NewScanner(sourceRepo, itemRepo)
 	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
-	return api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
+	srv := api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
+
+	sessions := playback.NewSessionManager(t.TempDir(), time.Minute)
+	srv.SetPlaybackService(playback.NewService(channelSvc, sourceRepo, itemRepo, sessions))
+
+	return srv
 }
 
 func newTestServerWithConn(t *testing.T, conn *sql.DB) *api.Server {
@@ -42,7 +49,12 @@ func newTestServerWithConn(t *testing.T, conn *sql.DB) *api.Server {
 	programRepo := sqlite.NewProgramRepository(conn)
 	scanner := mediastore.NewScanner(sourceRepo, itemRepo)
 	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
-	return api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
+	srv := api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
+
+	sessions := playback.NewSessionManager(t.TempDir(), time.Minute)
+	srv.SetPlaybackService(playback.NewService(channelSvc, sourceRepo, itemRepo, sessions))
+
+	return srv
 }
 
 func TestSourcesAPI_CreateListDelete(t *testing.T) {

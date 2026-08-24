@@ -5,6 +5,7 @@ import (
 
 	"personaltv/internal/channels"
 	"personaltv/internal/mediastore"
+	"personaltv/internal/playback"
 	"personaltv/internal/repository"
 )
 
@@ -14,6 +15,7 @@ type Server struct {
 	scanner  *mediastore.Scanner
 	channels *channels.Service
 	static   http.Handler
+	playback *playback.Service
 }
 
 func NewServer(sources repository.MediaSourceRepository, items repository.MediaItemRepository, scanner *mediastore.Scanner, channelSvc *channels.Service) *Server {
@@ -28,6 +30,23 @@ func (s *Server) SetStaticHandler(h http.Handler) {
 	s.static = h
 }
 
+// SetPlaybackService registers the playback service used by the
+// tune-in/direct-play/session-serving endpoints. If never called, those
+// endpoints will panic on a nil Service — every existing test and
+// NewServer call site that doesn't touch playback is unaffected, since
+// none of them exercise these routes.
+func (s *Server) SetPlaybackService(p *playback.Service) {
+	s.playback = p
+}
+
+// PlaybackServiceForTest exposes the wired playback.Service to this
+// package's own tests (internal/api/playback_handlers_test.go), so tests
+// can start a real session directly via Service.StartTestSession. Not
+// part of the public HTTP API.
+func (s *Server) PlaybackServiceForTest() *playback.Service {
+	return s.playback
+}
+
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
@@ -40,6 +59,7 @@ func (s *Server) Routes() http.Handler {
 
 	mux.HandleFunc("GET /api/media", s.handleListMedia)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.handleMediaStream)
+	mux.HandleFunc("GET /api/playback/sessions/{id}/{file}", s.handleSessionFile)
 
 	mux.HandleFunc("GET /api/channels", s.handleListChannels)
 	mux.HandleFunc("POST /api/channels", s.handleCreateChannel)

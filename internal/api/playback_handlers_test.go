@@ -151,3 +151,70 @@ func scanAndGetFirstItem(t *testing.T, ts *httptest.Server, sourceID int64) int6
 	}
 	return items[0].ID
 }
+
+func TestPlaybackSession_ServesPlaylistAndSegmentsAndTracksLastUse(t *testing.T) {
+	srv := newTestServer(t)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	videoDir := t.TempDir()
+	video := generatePlaybackTestVideo(t, videoDir, "movie.mp4", 6)
+
+	sess, err := srv.PlaybackServiceForTest().StartTestSession(video)
+	if err != nil {
+		t.Fatalf("starting a test session: %v", err)
+	}
+
+	playlistResp, err := http.Get(ts.URL + "/api/playback/sessions/" + sess.ID + "/playlist.m3u8")
+	if err != nil {
+		t.Fatalf("GET playlist failed: %v", err)
+	}
+	defer playlistResp.Body.Close()
+	if playlistResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for the playlist, got %d", playlistResp.StatusCode)
+	}
+	if ct := playlistResp.Header.Get("Content-Type"); ct != "application/vnd.apple.mpegurl" {
+		t.Errorf("expected playlist content-type application/vnd.apple.mpegurl, got %q", ct)
+	}
+	playlistBody, _ := io.ReadAll(playlistResp.Body)
+	if len(playlistBody) == 0 {
+		t.Error("expected a non-empty playlist body")
+	}
+}
+
+func TestPlaybackSession_404sForUnknownSession(t *testing.T) {
+	srv := newTestServer(t)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/playback/sessions/no-such-session/playlist.m3u8")
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 for an unknown session, got %d", resp.StatusCode)
+	}
+}
+
+func TestPlaybackSession_RejectsPathTraversal(t *testing.T) {
+	srv := newTestServer(t)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	videoDir := t.TempDir()
+	video := generatePlaybackTestVideo(t, videoDir, "movie.mp4", 6)
+	sess, err := srv.PlaybackServiceForTest().StartTestSession(video)
+	if err != nil {
+		t.Fatalf("starting a test session: %v", err)
+	}
+
+	resp, err := http.Get(ts.URL + "/api/playback/sessions/" + sess.ID + "/..%2f..%2f..%2fetc%2fpasswd")
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Fatal("expected a path-traversal attempt to be rejected, got 200")
+	}
+}
