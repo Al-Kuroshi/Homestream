@@ -64,4 +64,16 @@ describe("AppRoutes", () => {
     );
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
   });
+
+  it("renders the TV screen's empty state at /tv when there are no channels", async () => {
+    server.use(http.get("/api/channels", () => HttpResponse.json([])));
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <MemoryRouter initialEntries={["/tv"]}>
+          <AppRoutes />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    expect(await screen.findByRole("heading", { name: "TV" })).toBeInTheDocument();
+  });
 });

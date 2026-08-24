@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import "./Sidebar.css";
 
 const NAV_ITEMS = [
+  { to: "/tv", label: "TV" },
   { to: "/guide", label: "Guide" },
   { to: "/library", label: "Library" },
   { to: "/channels", label: "Channels" },

@@ -4,13 +4,13 @@ import { describe, expect, it } from "vitest";
 import { Sidebar } from "./Sidebar";
 
 describe("Sidebar", () => {
-  it("renders a link for each of the four screens", () => {
+  it("renders a link for each of the five screens", () => {
     render(
       <MemoryRouter initialEntries={["/guide"]}>
         <Sidebar />
       </MemoryRouter>
     );
-    for (const label of ["Guide", "Library", "Channels", "Settings"]) {
+    for (const label of ["TV", "Guide", "Library", "Channels", "Settings"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
   });

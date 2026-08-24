@@ -1,0 +1,15 @@
+.tv-screen {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 48px);
+  background: #000;
+}
+
+.tv-screen-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #f5f5f5;
+}
