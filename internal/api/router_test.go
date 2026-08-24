@@ -8,7 +8,7 @@ import (
 )
 
 func TestRoutes_WithoutStaticHandler_UnmatchedPath404s(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -23,7 +23,7 @@ func TestRoutes_WithoutStaticHandler_UnmatchedPath404s(t *testing.T) {
 }
 
 func TestRoutes_WithStaticHandler_FallsBackForUnmatchedPaths(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	srv.SetStaticHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("static: " + r.URL.Path))
 	}))
@@ -55,7 +55,7 @@ func TestRoutes_WithStaticHandler_FallsBackForUnmatchedPaths(t *testing.T) {
 }
 
 func TestRoutes_WithStaticHandler_UnmatchedApiPath404s(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	srv.SetStaticHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("static: " + r.URL.Path))
 	}))

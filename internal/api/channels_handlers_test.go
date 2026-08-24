@@ -16,7 +16,7 @@ import (
 )
 
 func TestChannelsAPI_CreateGetUpdateDelete(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -66,7 +66,7 @@ func TestChannelsAPI_CreateGetUpdateDelete(t *testing.T) {
 }
 
 func TestChannelsAPI_UpdateNonexistent404(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -86,7 +86,7 @@ func TestChannelsAPI_UpdateNonexistent404(t *testing.T) {
 // "this channel doesn't exist" across all three endpoints on the resource,
 // rather than 404 / 200-with-null / 200-with-empty-list.
 func TestChannelsAPI_MissingChannelIsConsistently404(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -137,7 +137,7 @@ func TestProgramsAPI_UpdateRejectsEmptyBody(t *testing.T) {
 		t.Fatalf("failed to create program: %v", err)
 	}
 
-	srv := newTestServerWithConn(t, conn)
+	srv, _ := newTestServerWithConn(t, conn)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -191,7 +191,7 @@ func TestProgramsAPI_AddListUpdateDelete(t *testing.T) {
 		t.Fatalf("failed to create channel: %v", err)
 	}
 
-	srv := newTestServerWithConn(t, conn)
+	srv, _ := newTestServerWithConn(t, conn)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 

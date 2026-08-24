@@ -31,11 +31,3 @@ func (svc *Service) GetSession(id string) (*Session, bool) {
 func (svc *Service) TouchSession(id string) {
 	svc.sessions.Touch(id)
 }
-
-// StartTestSession starts a real transcode session directly against the
-// given media path, bypassing TuneIn's schedule/compatibility logic
-// entirely. Exported only for tests that need a real session to exist
-// without depending on Task 5's tune-in orchestration.
-func (svc *Service) StartTestSession(mediaPath string) (*Session, error) {
-	return svc.sessions.StartSession(mediaPath, 0)
-}

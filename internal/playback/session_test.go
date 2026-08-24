@@ -25,7 +25,7 @@ func generateSessionTestVideo(t *testing.T, dir, name string, durationSec int) s
 
 func TestSessionManager_StartSession_ProducesPlaylistAndSegments(t *testing.T) {
 	videoDir := t.TempDir()
-	video := generateSessionTestVideo(t, videoDir, "movie.mp4", 6)
+	video := generateSessionTestVideo(t, videoDir, "movie.mp4", 12)
 
 	m := NewSessionManager(t.TempDir(), time.Minute)
 	sess, err := m.StartSession(video, 0)
@@ -38,24 +38,28 @@ func TestSessionManager_StartSession_ProducesPlaylistAndSegments(t *testing.T) {
 		t.Errorf("expected playlist.m3u8 to exist: %v", err)
 	}
 
-	// StartSession only waits for the playlist itself; give ffmpeg a short
-	// moment to also flush at least one real segment.
-	deadline := time.Now().Add(5 * time.Second)
-	var sawSegment bool
+	// StartSession only waits for the playlist itself to appear; poll for
+	// the segment count to reach at least 2, proving the playlist is
+	// genuinely segmenting/growing over time (with 2s-forced keyframes and
+	// a 12s source, a single giant segment would indicate -hls_time/forced
+	// keyframes regressed), not just that one segment eventually shows up.
+	deadline := time.Now().Add(10 * time.Second)
+	var segmentCount int
 	for time.Now().Before(deadline) {
 		entries, _ := os.ReadDir(sess.Dir)
+		segmentCount = 0
 		for _, e := range entries {
 			if filepath.Ext(e.Name()) == ".ts" {
-				sawSegment = true
+				segmentCount++
 			}
 		}
-		if sawSegment {
+		if segmentCount >= 2 {
 			break
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
-	if !sawSegment {
-		t.Error("expected at least one .ts segment to be produced")
+	if segmentCount < 2 {
+		t.Fatalf("expected at least 2 segments after 10s, got %d", segmentCount)
 	}
 
 	got, ok := m.Get(sess.ID)

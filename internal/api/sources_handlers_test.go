@@ -24,7 +24,7 @@ import (
 	"personaltv/internal/repository/sqlite"
 )
 
-func newTestServer(t *testing.T) *api.Server {
+func newTestServer(t *testing.T) (*api.Server, *playback.SessionManager) {
 	t.Helper()
 	conn := db.OpenTest(t)
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
@@ -36,12 +36,13 @@ func newTestServer(t *testing.T) *api.Server {
 	srv := api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
 
 	sessions := playback.NewSessionManager(t.TempDir(), time.Minute)
+	t.Cleanup(func() { sessions.Close() })
 	srv.SetPlaybackService(playback.NewService(channelSvc, sourceRepo, itemRepo, sessions))
 
-	return srv
+	return srv, sessions
 }
 
-func newTestServerWithConn(t *testing.T, conn *sql.DB) *api.Server {
+func newTestServerWithConn(t *testing.T, conn *sql.DB) (*api.Server, *playback.SessionManager) {
 	t.Helper()
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
 	itemRepo := sqlite.NewMediaItemRepository(conn)
@@ -52,13 +53,14 @@ func newTestServerWithConn(t *testing.T, conn *sql.DB) *api.Server {
 	srv := api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
 
 	sessions := playback.NewSessionManager(t.TempDir(), time.Minute)
+	t.Cleanup(func() { sessions.Close() })
 	srv.SetPlaybackService(playback.NewService(channelSvc, sourceRepo, itemRepo, sessions))
 
-	return srv
+	return srv, sessions
 }
 
 func TestSourcesAPI_CreateListDelete(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -107,7 +109,7 @@ func TestSourcesAPI_CreateListDelete(t *testing.T) {
 // the media source path: with no authentication in this MVP, an arbitrary
 // path would let any caller point the scanner anywhere on the filesystem.
 func TestSourcesAPI_CreateRejectsInvalidPaths(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -158,7 +160,7 @@ func TestSourcesAPI_CreateRejectsInvalidPaths(t *testing.T) {
 // length: `null` and `[]` both decode to a zero-length slice, so only the
 // raw check catches a List method handing back a nil slice.
 func TestMediaAPI_ListEmpty(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -194,7 +196,7 @@ func TestProgramsAPI_ListEmptyForExistingChannel(t *testing.T) {
 		t.Fatalf("failed to create channel: %v", err)
 	}
 
-	srv := newTestServerWithConn(t, conn)
+	srv, _ := newTestServerWithConn(t, conn)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -219,7 +221,7 @@ func TestProgramsAPI_ListEmptyForExistingChannel(t *testing.T) {
 // responses that marshal a model struct must use the same snake_case keys
 // as the request bodies, not Go's default capitalized field names.
 func TestSourcesAPI_ResponsesUseSnakeCase(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 

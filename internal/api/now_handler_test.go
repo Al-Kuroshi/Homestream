@@ -39,7 +39,7 @@ func TestChannelNowAPI_CurrentProgram(t *testing.T) {
 		t.Fatalf("failed to create program: %v", err)
 	}
 
-	srv := newTestServerWithConn(t, conn)
+	srv, _ := newTestServerWithConn(t, conn)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -79,7 +79,7 @@ func TestChannelNowAPI_OffAir(t *testing.T) {
 		t.Fatalf("failed to create channel: %v", err)
 	}
 
-	srv := newTestServerWithConn(t, conn)
+	srv, _ := newTestServerWithConn(t, conn)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 

@@ -14,7 +14,7 @@ import (
 )
 
 func TestMediaStream_ServesFileWithRangeSupport(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -67,7 +67,7 @@ func TestMediaStream_ServesFileWithRangeSupport(t *testing.T) {
 }
 
 func TestMediaStream_404sForUnknownMediaItem(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -153,14 +153,14 @@ func scanAndGetFirstItem(t *testing.T, ts *httptest.Server, sourceID int64) int6
 }
 
 func TestPlaybackSession_ServesPlaylistAndSegmentsAndTracksLastUse(t *testing.T) {
-	srv := newTestServer(t)
+	srv, sessions := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
 	videoDir := t.TempDir()
 	video := generatePlaybackTestVideo(t, videoDir, "movie.mp4", 6)
 
-	sess, err := srv.PlaybackServiceForTest().StartTestSession(video)
+	sess, err := sessions.StartSession(video, 0)
 	if err != nil {
 		t.Fatalf("starting a test session: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestPlaybackSession_ServesPlaylistAndSegmentsAndTracksLastUse(t *testing.T)
 }
 
 func TestPlaybackSession_404sForUnknownSession(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -198,13 +198,13 @@ func TestPlaybackSession_404sForUnknownSession(t *testing.T) {
 }
 
 func TestPlaybackSession_RejectsPathTraversal(t *testing.T) {
-	srv := newTestServer(t)
+	srv, sessions := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
 	videoDir := t.TempDir()
 	video := generatePlaybackTestVideo(t, videoDir, "movie.mp4", 6)
-	sess, err := srv.PlaybackServiceForTest().StartTestSession(video)
+	sess, err := sessions.StartSession(video, 0)
 	if err != nil {
 		t.Fatalf("starting a test session: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestPlaybackSession_RejectsPathTraversal(t *testing.T) {
 }
 
 func TestChannelWatch_ReturnsOffAirForChannelWithNothingScheduled(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
@@ -252,7 +252,7 @@ func TestChannelWatch_ReturnsOffAirForChannelWithNothingScheduled(t *testing.T) 
 }
 
 func TestChannelWatch_404sForUnknownChannel(t *testing.T) {
-	srv := newTestServer(t)
+	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 

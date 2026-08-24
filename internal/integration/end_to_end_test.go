@@ -156,6 +156,7 @@ func TestFullUserJourney_Playback(t *testing.T) {
 	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
 
 	sessions := playback.NewSessionManager(t.TempDir(), time.Minute)
+	defer sessions.Close()
 	playbackSvc := playback.NewService(channelSvc, sourceRepo, itemRepo, sessions)
 
 	server := api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)

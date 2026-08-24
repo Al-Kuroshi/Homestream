@@ -47,9 +47,10 @@ func (s *Session) markFailed(err error) {
 	s.mu.Unlock()
 }
 
-// Failed reports whether this session's ffmpeg process has exited or
-// crashed. Once true, the session's playlist/segment endpoint should stop
-// serving it as if more content were coming.
+// Failed reports whether this session's ffmpeg process exited with an
+// error. A clean exit (the transcode completed successfully) does not
+// count as failed — Failed only reports process-level failures, not
+// normal completion.
 func (s *Session) Failed() (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -71,18 +72,26 @@ func (s *Session) kill() {
 // lost on restart and nothing ticks with no viewers (a server restart
 // simply drops all active sessions).
 type SessionManager struct {
-	baseDir     string
-	idleTimeout time.Duration
+	baseDir        string
+	idleTimeout    time.Duration
+	startupTimeout time.Duration
 
 	mu       sync.Mutex
 	sessions map[string]*Session
 }
 
+// defaultStartupTimeout bounds how long StartSession waits for ffmpeg to
+// produce a playlist before giving up. 15s is generous relative to
+// -preset veryfast's encode speed, leaving headroom for real content on
+// modest hardware rather than the tight 5s this used to be hardcoded to.
+const defaultStartupTimeout = 15 * time.Second
+
 func NewSessionManager(baseDir string, idleTimeout time.Duration) *SessionManager {
 	return &SessionManager{
-		baseDir:     baseDir,
-		idleTimeout: idleTimeout,
-		sessions:    make(map[string]*Session),
+		baseDir:        baseDir,
+		idleTimeout:    idleTimeout,
+		startupTimeout: defaultStartupTimeout,
+		sessions:       make(map[string]*Session),
 	}
 }
 
@@ -94,7 +103,7 @@ func NewSessionManager(baseDir string, idleTimeout time.Duration) *SessionManage
 func (m *SessionManager) StartSession(mediaPath string, offsetSec float64) (*Session, error) {
 	id := uuid.New().String()
 	dir := filepath.Join(m.baseDir, id)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("creating session directory: %w", err)
 	}
 
@@ -110,7 +119,10 @@ func (m *SessionManager) StartSession(mediaPath string, offsetSec float64) (*Ses
 		"-ss", strconv.FormatFloat(offsetSec, 'f', 3, 64),
 		"-i", mediaPath,
 		"-c:v", "libx264",
+		"-preset", "veryfast",
 		"-c:a", "aac",
+		"-force_key_frames", "expr:gte(t,n_forced*2)",
+		"-nostats",
 		"-f", "hls",
 		"-hls_time", "2",
 		"-hls_playlist_type", "event",
@@ -134,7 +146,7 @@ func (m *SessionManager) StartSession(mediaPath string, offsetSec float64) (*Ses
 		}
 	}()
 
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(m.startupTimeout)
 	for time.Now().Before(deadline) {
 		if _, statErr := os.Stat(playlistPath); statErr == nil {
 			m.mu.Lock()

@@ -120,9 +120,13 @@ func (s *Server) handleChannelWatch(w http.ResponseWriter, r *http.Request) {
 }
 
 type watchResponse struct {
-	Status      string  `json:"status"`
-	Mode        string  `json:"mode,omitempty"`
-	MediaItemID int64   `json:"media_item_id,omitempty"`
-	OffsetSec   float64 `json:"offset_sec,omitempty"`
-	SessionID   string  `json:"session_id,omitempty"`
+	Status      string `json:"status"`
+	Mode        string `json:"mode,omitempty"`
+	MediaItemID int64  `json:"media_item_id,omitempty"`
+	// OffsetSec is how far into the media playback starts. In "hls" mode
+	// this offset has already been applied via ffmpeg's -ss seek when the
+	// session was started — a client must NOT seek the HLS playback
+	// position by this amount again.
+	OffsetSec float64 `json:"offset_sec,omitempty"`
+	SessionID string  `json:"session_id,omitempty"`
 }

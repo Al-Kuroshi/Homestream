@@ -39,14 +39,6 @@ func (s *Server) SetPlaybackService(p *playback.Service) {
 	s.playback = p
 }
 
-// PlaybackServiceForTest exposes the wired playback.Service to this
-// package's own tests (internal/api/playback_handlers_test.go), so tests
-// can start a real session directly via Service.StartTestSession. Not
-// part of the public HTTP API.
-func (s *Server) PlaybackServiceForTest() *playback.Service {
-	return s.playback
-}
-
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 

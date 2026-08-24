@@ -47,6 +47,7 @@ func newTuneInFixture(t *testing.T) *tuneInFixture {
 	programRepo := sqlite.NewProgramRepository(conn)
 	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
 	sessions := playback.NewSessionManager(t.TempDir(), time.Minute)
+	t.Cleanup(func() { sessions.Close() })
 	svc := playback.NewService(channelSvc, sourceRepo, itemRepo, sessions)
 
 	ctx := context.Background()

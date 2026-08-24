@@ -3,6 +3,7 @@ package playback
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"time"
 
@@ -17,8 +18,12 @@ type TuneInResult struct {
 	Status      string // "playing", "off_air", or "unavailable"
 	Mode        string // "direct" or "hls"; empty unless Status == "playing"
 	MediaItemID int64
-	OffsetSec   float64
-	SessionID   string // only set when Mode == "hls"
+	// OffsetSec is how far into the media playback should start. In "hls"
+	// mode this offset has already been applied via ffmpeg's -ss seek when
+	// the session was started — a client must NOT seek the HLS playback
+	// position by this amount again.
+	OffsetSec float64
+	SessionID string // only set when Mode == "hls"
 }
 
 // TuneIn decides what a viewer sees when they tune in to channelID right
@@ -68,12 +73,17 @@ func (svc *Service) TuneIn(ctx context.Context, channelID int64, now time.Time) 
 		source, ok := sourcesByID[item.SourceID]
 		if !ok {
 			source, err = svc.sources.Get(ctx, item.SourceID)
-			if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
 				continue // source itself gone; item can't be playable
+			}
+			if err != nil {
+				return nil, err
 			}
 			sourcesByID[item.SourceID] = source
 		}
-		if _, statErr := os.Stat(ResolvePath(source, item)); statErr != nil {
+		path := ResolvePath(source, item)
+		if _, statErr := os.Stat(path); statErr != nil {
+			log.Printf("playback: excluding media item %d (%s) from schedule: file not found on disk", item.ID, path)
 			continue // file missing: excluded from scheduling, not skipped-to
 		}
 
@@ -89,7 +99,7 @@ func (svc *Service) TuneIn(ctx context.Context, channelID int64, now time.Time) 
 	stateB := scheduler.Evaluate(playable, now)
 	if stateB.Current == nil {
 		// Something IS scheduled right now per pass A, but its file (and
-		// nothing else covering this exact moment) is playable.
+		// nothing else covering this exact moment) isn't playable.
 		return &TuneInResult{Status: "unavailable"}, nil
 	}
 
