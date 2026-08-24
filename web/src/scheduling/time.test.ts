@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeEndTime, formatTimeRange, toDatetimeLocalValue } from "./time";
+import { computeEndTime, formatCountdown, formatTime, formatTimeRange, toDatetimeLocalValue } from "./time";
 
 describe("computeEndTime", () => {
   it("adds the media duration (in seconds) to the start time", () => {
@@ -32,5 +32,23 @@ describe("toDatetimeLocalValue", () => {
     const pad = (n: number) => String(n).padStart(2, "0");
     const expected = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     expect(toDatetimeLocalValue(iso)).toBe(expected);
+  });
+});
+
+describe("formatTime", () => {
+  it("formats a single time as UTC hour:minute", () => {
+    expect(formatTime(new Date("2026-01-01T18:00:00Z"))).toBe("06:00 PM");
+  });
+});
+
+describe("formatCountdown", () => {
+  it("formats a millisecond duration as H:MM:SS", () => {
+    expect(formatCountdown(30_000)).toBe("0:00:30");
+    expect(formatCountdown(65_000)).toBe("0:01:05");
+    expect(formatCountdown(3_661_000)).toBe("1:01:01");
+  });
+
+  it("clamps a negative duration to 0:00:00", () => {
+    expect(formatCountdown(-5000)).toBe("0:00:00");
   });
 });

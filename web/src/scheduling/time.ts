@@ -28,3 +28,21 @@ export function toDatetimeLocalValue(iso: string): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+// Single-time formatter (unlike formatTimeRange's start–end pair), for "Up
+// next: X at HH:MM" style copy.
+export function formatTime(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+// Formats a millisecond duration as H:MM:SS (hours always shown, even if 0,
+// for a stable countdown width that doesn't reflow as it ticks across an
+// hour boundary).
+export function formatCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+}
