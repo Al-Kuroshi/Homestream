@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -280,5 +280,69 @@ describe("TVScreen", () => {
 
     const overlay = await screen.findByTestId("now-playing-overlay");
     expect(overlay).toHaveAttribute("data-current-time-sec", "50");
+  });
+
+  it("keeps the .tv-screen chrome and ChannelSwitcher mounted through the loading window of a self-scheduled re-tune-in", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T18:00:00Z"));
+
+    let watchCallCount = 0;
+    server.use(
+      http.post("/api/channels/1/watch", async () => {
+        watchCallCount += 1;
+        if (watchCallCount === 1) {
+          return HttpResponse.json({ status: "playing", mode: "direct", media_item_id: 5, offset_sec: 0 });
+        }
+        // Deliberately slow on the second call, so the test can observe
+        // the in-between "loading" state useTuneIn sets synchronously
+        // before this resolves — the exact window the chrome must survive
+        // (a program boundary or channel switch, not just first mount).
+        await new Promise((resolve) => setTimeout(resolve, 10_000));
+        return HttpResponse.json({ status: "playing", mode: "direct", media_item_id: 6, offset_sec: 0 });
+      }),
+      http.get("/api/channels/1/now", () =>
+        HttpResponse.json({
+          channel_id: 1,
+          current: { program_id: 1, media_item_id: 5, start_time: "2026-01-01T17:59:55Z", end_time: "2026-01-01T18:00:05Z" },
+          offset_sec: 5,
+          next: null,
+        })
+      )
+    );
+
+    renderScreen();
+
+    // Testing Library's findBy*/waitFor only auto-detects Jest's fake
+    // timers (it checks for a global `jest`), not Vitest's — under
+    // vi.useFakeTimers() it falls back to polling via a real setInterval,
+    // which is itself faked and never fires on its own. So every
+    // assertion below uses the synchronous getByTestId/queryByTestId
+    // (never findBy*) once each act(async advanceTimersByTimeAsync(...))
+    // has already flushed the relevant state/render — the same pattern
+    // api/playback.test.ts uses for this hook's own timer tests.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByTestId("video-player")).toBeInTheDocument();
+    expect(watchCallCount).toBe(1);
+
+    // current.end_time is 5s after mocked "now" — advancing past it fires
+    // useTuneIn's self-scheduled re-tune-in timer, which sets state back
+    // to "loading" before the (deliberately slow) second /watch response
+    // resolves.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    expect(screen.getByText("Tuning in…")).toBeInTheDocument();
+    expect(screen.getByLabelText("Next channel")).toBeInTheDocument();
+    expect(screen.queryByTestId("video-player")).not.toBeInTheDocument();
+
+    // Let the slow second response settle so nothing leaks past the test.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(screen.getByTestId("video-player")).toBeInTheDocument();
+    expect(watchCallCount).toBe(2);
   });
 });

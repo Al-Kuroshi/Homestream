@@ -24,11 +24,19 @@ const HEADINGS: Record<Props["reason"], string> = {
 export function Interstitial({ reason, next }: Props) {
   const [now, setNow] = useState(() => new Date());
 
+  // Depends on next?.startTime.getTime() (a primitive) rather than `next`
+  // itself (an object literal TVScreen rebuilds fresh on every render): if
+  // this ever depended on the object reference, a render that recreates an
+  // equivalent `next` would tear down and recreate the interval before it
+  // fires, silently freezing the countdown. Currently nothing re-renders
+  // TVScreen at a real frequency while off-air, so this is defensive
+  // hardening rather than a fix for an observed freeze.
   useEffect(() => {
     if (!next) return;
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
-  }, [next]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [next?.startTime.getTime()]);
 
   return (
     <div className="interstitial">

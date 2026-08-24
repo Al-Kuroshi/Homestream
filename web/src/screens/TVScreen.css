@@ -1,6 +1,8 @@
 .tv-screen {
   position: relative;
   width: 100%;
+  /* 48px = .app-content's 24px top + 24px bottom padding (App.css). Keep
+     these in sync if that padding ever changes. */
   height: calc(100vh - 48px);
   background: #000;
 }
