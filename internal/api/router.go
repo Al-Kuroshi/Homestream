@@ -39,6 +39,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/sources/{id}/scan", s.handleScanSource)
 
 	mux.HandleFunc("GET /api/media", s.handleListMedia)
+	mux.HandleFunc("GET /api/media/{id}/stream", s.handleMediaStream)
 
 	mux.HandleFunc("GET /api/channels", s.handleListChannels)
 	mux.HandleFunc("POST /api/channels", s.handleCreateChannel)
