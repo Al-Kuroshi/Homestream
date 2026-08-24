@@ -1,0 +1,40 @@
+.now-playing-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 16px 24px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), transparent);
+  color: #fff;
+  transition: opacity 0.3s ease;
+  opacity: 1;
+}
+
+.now-playing-overlay-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.now-playing-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.now-playing-progress-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.now-playing-progress-fill {
+  height: 100%;
+  background: #f5f5f5;
+}
+
+.now-playing-next {
+  margin: 8px 0 0;
+  color: #ccc;
+  font-size: 0.9rem;
+}
