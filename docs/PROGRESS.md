@@ -1,6 +1,6 @@
 # Personal TV — Progress / Session Handoff
 
-**Last updated:** 2026-08-23
+**Last updated:** 2026-08-24
 
 This file exists so a new session (human or Claude Code) can pick up where the last one left off without re-reading the whole conversation history. It tracks *where we are*, not *what the product is* — for that, see the docs below.
 
@@ -9,10 +9,12 @@ This file exists so a new session (human or Claude Code) can pick up where the l
 - **Product requirements (canonical):** `docs/prd/HomeStreamer.md`
 - **Technical design spec (backend):** `docs/design/2026-08-21-personal-tv-design.md`
 - **Technical design spec (frontend):** `docs/design/2026-08-23-personal-tv-frontend-foundation-design.md`
+- **Technical design spec (playback):** `docs/design/2026-08-23-personal-tv-playback-design.md` — approved, implementation plan being written now (see Status).
 - **Implementation plan (Plan 1 — Core Backend):** `docs/plans/2026-08-21-personal-tv-core-backend.md` — merged.
-- **Implementation plan (Plan 2 — Frontend Foundation):** `docs/plans/2026-08-23-personal-tv-frontend-foundation.md` — complete, ready to merge (see Status).
+- **Implementation plan (Plan 2 — Frontend Foundation):** `docs/plans/2026-08-23-personal-tv-frontend-foundation.md` — merged.
+- **Implementation plan (Plan 3 — Playback Backend):** not yet written — in progress, see Status.
 - **Repo guidance for Claude Code:** `CLAUDE.md`
-- **You are here:** working directly on `main` (no active worktree). Both Plan 1 (backend) and Plan 2 (frontend) are merged.
+- **You are here:** working directly on `main` (no active worktree). Plan 1 (backend), Plan 2 (frontend), and the mutation-error-handling follow-up are all merged. Plan 3 (playback backend) has an approved design spec; the implementation plan document is being written next, then it'll run through the same subagent-driven-development process as Plans 1 and 2.
 
 ## Status
 
@@ -32,7 +34,9 @@ During implementation, several real bugs were caught and fixed by implementers/r
 
 ## Next step
 
-**TV/player screen** is still not built — it needs Plan 3 (playback: direct-play/transcode), which doesn't exist yet. Once playback exists, TV is the one remaining screen from the PRD's five. Docker packaging is also not started.
+**Plan 3 (playback backend)** is in progress: the design spec (`docs/design/2026-08-23-personal-tv-playback-design.md`) is approved — a new `internal/playback` package (compatibility matrix, tune-in orchestration with missing-file exclusion, in-memory `SessionManager` with idle-timeout-only cleanup, `ffmpeg`-based HLS transcoding) plus three new REST endpoints (`POST /api/channels/{id}/watch`, `GET /api/media/{id}/stream`, `GET /api/playback/sessions/{id}/{file}`), added additively with zero changes to any existing route. The implementation plan document itself is being written next.
+
+**TV/player screen** is still not built — it's a separate, smaller follow-up plan once the playback endpoints exist and are curl-able (mirroring how Plan 1 shipped before any UI existed). Docker packaging is also not started.
 
 Minor, non-blocking items parked during the frontend's final review (fine to pick up opportunistically, not tracked further than this list): no column-sorting on the Media Library table (design spec says "sortable", never implemented); a reorder test in `ChannelsListScreen.test.tsx` that doesn't check *which* channel got which position; a white-box test asserting Guide's polling interval via the query cache rather than observed behavior; no `AppRoutes.test.tsx` coverage for the `/channels/:id` route; a couple of cache-invalidation completeness gaps (deleting a source doesn't invalidate the media query key; deleting a channel doesn't invalidate its programs key) mitigated today by TanStack Query's default refetch-on-mount; an unused `channelId` field on `UpdateProgramInput`/`DeleteProgramInput`; one un-memoized lookup in `ChannelScheduleScreen.tsx` (Guide's equivalent is memoized); no overlap warning in the schedule editor (the Guide now clips overlaps gracefully, but nothing tells the user they created one); missing assets return `200 text/html` (SPA fallback) instead of `404`; no delete-confirmation on channels (Settings has this pattern for sources, Channels doesn't); and a `/// <reference types="node" />` in `web/src/test/setup.ts` that leaks `@types/node`'s ambient globals across the whole `tsconfig.app.json` compilation unit rather than staying scoped to that one file (low practical risk today — nothing else uses `process`/`Buffer` — but worth knowing if a future browser-code file accidentally references a Node global and type-checks successfully before crashing at runtime).
 
