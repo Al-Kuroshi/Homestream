@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"personaltv/internal/channels"
 	"personaltv/internal/db"
 	"personaltv/internal/mediastore"
+	"personaltv/internal/playback"
 	"personaltv/internal/repository/sqlite"
 	"personaltv/web"
 )
@@ -36,7 +38,19 @@ func main() {
 	scanner := mediastore.NewScanner(sourceRepo, itemRepo)
 	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
 
+	sessionsDir := filepath.Join(os.TempDir(), "personaltv-playback")
+	if err := playback.CleanOrphanedSessions(sessionsDir); err != nil {
+		log.Printf("warning: failed to clean orphaned playback sessions: %v", err)
+	}
+	sessions := playback.NewSessionManager(sessionsDir, 60*time.Second)
+	playbackSvc := playback.NewService(channelSvc, sourceRepo, itemRepo, sessions)
+
+	sweepCtx, stopSweep := context.WithCancel(context.Background())
+	defer stopSweep()
+	go sessions.Run(sweepCtx, 30*time.Second)
+
 	server := api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
+	server.SetPlaybackService(playbackSvc)
 
 	webHandler, err := web.Handler()
 	if err != nil {
@@ -49,8 +63,9 @@ func main() {
 		Handler: server.Routes(),
 		// ReadHeaderTimeout and IdleTimeout bound how long a slow or idle
 		// client can hold a connection. WriteTimeout is deliberately left
-		// unset: playback will stream long-lived responses, and a write
-		// deadline would cut those off mid-stream.
+		// unset: playback streams long-lived responses (direct-play range
+		// requests, HLS segments), and a write deadline would cut those
+		// off mid-stream.
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
@@ -83,6 +98,8 @@ func main() {
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("graceful shutdown failed: %v", err)
 		}
+		stopSweep()
+		sessions.Close()
 		log.Println("Personal TV stopped")
 	}
 }
