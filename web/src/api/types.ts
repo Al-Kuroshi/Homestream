@@ -31,11 +31,24 @@ export interface Channel {
   updated_at: string;
 }
 
-export interface Program {
+export interface Slot {
   id: number;
   channel_id: number;
-  media_item_id: number;
-  start_time: string;
+  kind: "media" | "gap";
+  media_item_id: number | null;
+  gap_duration_sec: number | null;
+  gap_label: string;
+  recurring: boolean;
+  day_of_week: number | null;
+  position: number | null;
+  start_time: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ResolvedSlot {
+  program_id: number;
+  media_item_id: number;
+  start_time: string;
+  end_time: string;
 }
