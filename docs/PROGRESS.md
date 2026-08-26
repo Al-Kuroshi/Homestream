@@ -1,6 +1,6 @@
 # Personal TV — Progress / Session Handoff
 
-**Last updated:** 2026-08-24 (Plan 4 complete)
+**Last updated:** 2026-08-26 (Plan 5 complete)
 
 This file exists so a new session (human or Claude Code) can pick up where the last one left off without re-reading the whole conversation history. It tracks *where we are*, not *what the product is* — for that, see the docs below.
 
@@ -11,13 +11,13 @@ This file exists so a new session (human or Claude Code) can pick up where the l
 - **Technical design spec (frontend):** `docs/design/2026-08-23-personal-tv-frontend-foundation-design.md`
 - **Technical design spec (playback):** `docs/design/2026-08-23-personal-tv-playback-design.md`.
 - **Technical design spec (TV/player screen):** `docs/design/2026-08-24-personal-tv-player-design.md`.
-- **Technical design spec (recurring slot-chain scheduling & drag-and-drop timeline):** `docs/design/2026-08-26-recurring-slot-scheduling-design.md` — approved, no implementation plan yet. Supersedes the scheduling parts of the frontend design spec (`Program`/absolute-`start_time`-only model, dropdown schedule editor).
+- **Technical design spec (recurring slot-chain scheduling & drag-and-drop timeline):** `docs/design/2026-08-26-recurring-slot-scheduling-design.md` — implemented (Plan 5 complete).
 - **Implementation plan (Plan 1 — Core Backend):** `docs/plans/2026-08-21-personal-tv-core-backend.md` — merged.
 - **Implementation plan (Plan 2 — Frontend Foundation):** `docs/plans/2026-08-23-personal-tv-frontend-foundation.md` — merged.
 - **Implementation plan (Plan 3 — Playback Backend):** `docs/plans/2026-08-23-personal-tv-playback-backend.md` — merged.
 - **Implementation plan (Plan 4 — TV/Player Screen):** `docs/plans/2026-08-24-personal-tv-player.md` — implemented, all 6 tasks complete, awaiting merge decision (see Status).
 - **Repo guidance for Claude Code:** `CLAUDE.md`
-- **You are here:** work happened in git worktree `.claude/worktrees/tv-player-screen` on branch `worktree-tv-player-screen` (based on `main` @ `3e5a076`), not yet merged. Plans 1-3 and the mutation-error-handling follow-up are all merged to `main`. Plan 4 (TV/player screen) ran through subagent-driven-development end to end — all 6 tasks implemented and individually reviewed, plus a final whole-branch review that found real issues (fixed in one wave) — and is ready for `superpowers:finishing-a-development-branch` to decide how it lands. **All 5 MVP frontend screens now exist** (TV, Guide, Library, Channels, Settings) — this is the last frontend plan before Docker packaging.
+- **You are here:** work happened in git worktree `.claude/worktrees/recurring-slot-scheduling` on branch `worktree-recurring-slot-scheduling`, not yet merged. Plans 1-4 and the mutation-error-handling follow-up are merged to `main`. Plan 5 (recurring slot-chain scheduling) ran through subagent-driven-development end to end — all 11 tasks implemented and individually reviewed, with no post-review issues requiring fix rounds — and is ready for `superpowers:finishing-a-development-branch` to decide how it lands. **Backend model and API now support recurring weekly scheduling; frontend Channels screen editor is now a drag-and-drop weekly grid.**
 
 ## Status
 
@@ -50,13 +50,11 @@ All 6 tasks passed individual spec+quality review (Task 6 needed one fix round f
 - **Unguarded `localStorage`** in both `TVScreen.tsx` and `TVIndexScreen.tsx` — throws in Safari private browsing/storage-disabled; the `TVIndexScreen` read happened during render with no error boundary above it, so it would have crashed the whole `/tv` route for those users. Fixed with try/catch on both.
 - **No `<video>` element in this codebase has ever been exercised in a real browser.** The implementation environment had none available — verification stopped at type-checking, jsdom-mocked component tests (`hls.js` itself is mocked in tests), and an API-level contract smoke test against the real Go binary (proving the endpoints return exactly what `TVScreen` expects). The final reviewer assessed the residual risk as narrow (hls.js's `loadSource`-before-`attachMedia` ordering is its documented-supported sequence, not the classic bug; the `offset_sec`-never-in-hls constraint is enforced and tested at two independent layers) and recommended merging with a documented manual-verification follow-up rather than blocking on it.
 
+**Recurring slot-chain scheduling (Plan 5):** implemented on branch `worktree-recurring-slot-scheduling`, all 11 tasks complete. A real domain-model change: `Program` model replaced with `Slot` model supporting recurring slots (day-of-week + position, or one-off absolute start time), gap/break slots, and a resolution step (new internal `/api/channels/{id}/slots/resolved` endpoint) that produces the same scheduled-program stream the old code generated, feeding into the unchanged scheduler. New REST surface: `GET/POST /api/channels/{id}/slots`, `GET /api/channels/{id}/slots/resolved`, `GET/PUT/DELETE /api/slots/{id}`. Frontend-only change to Channels screen: the schedule editor is now a drag-and-drop weekly grid (read-only rendering, drag-insert new slots, drag-move existing slots, create-gap toggle, recurring/one-off mode toggle, delete), replacing the old dropdown-based add-program form. Guide screen now consumes the resolved-window endpoint instead of direct program listing. All slot creation/mutation endpoints and guide filtering were wired, tested, and individually reviewed through to completion. `go build/vet/test ./... -race` clean, `cd web && npx tsc -b && npm run lint && npm test && npm run build` clean. All 11 tasks passed individual spec+quality review with no post-review issues requiring fix rounds.
+
 ## Next step
 
-**Recurring slot-chain scheduling design is approved, no implementation plan yet:** `docs/design/2026-08-26-recurring-slot-scheduling-design.md` — a real domain-model change (`Program` → `Slot`, recurring-by-default with day-of-week addressing, gap/break slots, a resolution step feeding the unchanged `scheduler.Evaluate`) plus a new drag-and-drop weekly timeline UI replacing the Channels screen's dropdown-based schedule editor. Run `superpowers:writing-plans` against it when ready to pick this up. Known-missing overlap validation in the current schedule editor (see the "no overlap warning" item below) is addressed by this spec's design, not by a separate smaller fix.
-
-**A human should do a manual browser pass on the TV screen before/alongside the next plan** — this is the one thing no subagent in this environment could verify. Build and run (`cd web && npm run build && cd .. && go run ./cmd/personaltv`), then in a real browser check: (1) a direct-play channel actually plays and starts at the right offset; (2) an hls-mode channel (a non-h264/aac/mp4 file) attaches `hls.js` and its segments actually load; (3) the tap-to-play button appears if autoplay is blocked; (4) prev/next channel switching visually works; (5) the now-playing overlay auto-hides and re-shows on mouse movement.
-
-**Decide how the `worktree-tv-player-screen` branch lands** — run `superpowers:finishing-a-development-branch` from that branch (or merge it, per your normal workflow, then continue from `main`).
+**Decide how the `worktree-recurring-slot-scheduling` branch lands** — run `superpowers:finishing-a-development-branch` from that branch (or merge it, per your normal workflow, then continue from `main`).
 
 **Docker packaging** is the next, and last-planned, MVP piece — not started. `PERSONALTV_SESSIONS_DIR` (added in Plan 3) removes one blocker for it. Two things to carry into that plan's brief from Plan 4: the frontend production build now warns that its JS bundle is ~866KB (~270KB gzip) because `hls.js` is statically imported (`web/src/components/VideoPlayer.tsx`) with no code-splitting — worth a look if embedded-binary size becomes a concern; and the manual browser-verification checklist above, since that plan will want a working `/tv` as part of its own smoke test anyway.
 
