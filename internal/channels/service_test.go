@@ -317,3 +317,83 @@ func TestService_UpdateSlot_ExcludesItsOwnPriorStateFromValidation(t *testing.T)
 		t.Fatalf("UpdateSlot (moving the only slot on its day): %v", err)
 	}
 }
+
+func TestService_CurrentState_ResolvesFromRecurringSlots(t *testing.T) {
+	ctx := context.Background()
+	svc, channel, item := newServiceWithChannelAndMediaItem(t, 3600)
+
+	monday := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
+	dayOfWeek, position := int(monday.Weekday()), 1000
+	slot := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: true, DayOfWeek: &dayOfWeek, Position: &position}
+	if err := svc.AddSlot(ctx, slot); err != nil {
+		t.Fatalf("AddSlot: %v", err)
+	}
+
+	now := monday.Add(30 * time.Minute)
+	state, err := svc.CurrentState(ctx, channel.ID, now)
+	if err != nil {
+		t.Fatalf("CurrentState: %v", err)
+	}
+	if state.Current == nil || state.Current.ProgramID != slot.ID {
+		t.Fatalf("got %+v, want the recurring slot playing at %v", state, now)
+	}
+	if state.Offset != 30*time.Minute {
+		t.Fatalf("got Offset %v, want 30m", state.Offset)
+	}
+}
+
+func TestService_CurrentState_NextLooksIntoTomorrowWhenTodayIsExhausted(t *testing.T) {
+	ctx := context.Background()
+	svc, channel, item := newServiceWithChannelAndMediaItem(t, 3600)
+
+	monday := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
+	tuesday := monday.AddDate(0, 0, 1)
+	mondayDay, tuesdayDay, position := int(monday.Weekday()), int(tuesday.Weekday()), 1000
+	mondaySlot := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: true, DayOfWeek: &mondayDay, Position: &position}
+	tuesdaySlot := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: true, DayOfWeek: &tuesdayDay, Position: &position}
+	if err := svc.AddSlot(ctx, mondaySlot); err != nil {
+		t.Fatalf("AddSlot (monday): %v", err)
+	}
+	if err := svc.AddSlot(ctx, tuesdaySlot); err != nil {
+		t.Fatalf("AddSlot (tuesday): %v", err)
+	}
+
+	// Monday's only slot (00:00-01:00) has already ended by 23:00 Monday;
+	// "next" must find Tuesday's slot at 00:00, not report nothing.
+	now := monday.Add(23 * time.Hour)
+	state, err := svc.CurrentState(ctx, channel.ID, now)
+	if err != nil {
+		t.Fatalf("CurrentState: %v", err)
+	}
+	if state.Next == nil || state.Next.ProgramID != tuesdaySlot.ID {
+		t.Fatalf("got %+v, want Next to be Tuesday's slot", state)
+	}
+}
+
+func TestService_ResolvedWindow_ReturnsOccurrencesAcrossMultipleDays(t *testing.T) {
+	ctx := context.Background()
+	svc, channel, item := newServiceWithChannelAndMediaItem(t, 3600)
+
+	monday := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
+	dayOfWeek, position := int(monday.Weekday()), 1000
+	slot := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: true, DayOfWeek: &dayOfWeek, Position: &position}
+	if err := svc.AddSlot(ctx, slot); err != nil {
+		t.Fatalf("AddSlot: %v", err)
+	}
+
+	from := monday
+	to := monday.AddDate(0, 0, 14) // two weeks: the recurring slot should appear twice
+	resolved, err := svc.ResolvedWindow(ctx, channel.ID, from, to)
+	if err != nil {
+		t.Fatalf("ResolvedWindow: %v", err)
+	}
+	count := 0
+	for _, r := range resolved {
+		if r.ProgramID == slot.ID {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("got %d occurrences of the weekly recurring slot across 2 weeks, want 2", count)
+	}
+}

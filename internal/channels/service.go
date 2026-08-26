@@ -161,6 +161,8 @@ func (s *Service) mediaByIDForSlots(ctx context.Context, slots []*model.Slot) (m
 	return mediaByID, nil
 }
 
+const lookaheadDays = 7
+
 // CurrentState reports what's currently playing on a channel (if anything)
 // and what plays next, as of now. Each call recomputes from persisted
 // schedule + media duration — nothing is cached or ticking in the
@@ -170,32 +172,38 @@ func (s *Service) CurrentState(ctx context.Context, channelID int64, now time.Ti
 	if err != nil {
 		return scheduler.CurrentState{}, err
 	}
-
-	// Interim: only resolves one-off slots directly (Task 5 replaces this
-	// whole body with real ResolveDate-based resolution covering recurring
-	// slots too).
-	scheduled := make([]scheduler.ScheduledProgram, 0, len(slots))
-	for _, sl := range slots {
-		if sl.Recurring || sl.StartTime == nil || sl.MediaItemID == nil {
-			continue
-		}
-		item, err := s.items.Get(ctx, *sl.MediaItemID)
-		if errors.Is(err, repository.ErrNotFound) {
-			continue
-		}
-		if err != nil {
-			return scheduler.CurrentState{}, err
-		}
-		if item.Invalid || item.DurationSec <= 0 {
-			continue
-		}
-		scheduled = append(scheduled, scheduler.ScheduledProgram{
-			ProgramID:   sl.ID,
-			MediaItemID: *sl.MediaItemID,
-			StartTime:   *sl.StartTime,
-			Duration:    time.Duration(item.DurationSec * float64(time.Second)),
-		})
+	mediaByID, err := s.mediaByIDForSlots(ctx, slots)
+	if err != nil {
+		return scheduler.CurrentState{}, err
 	}
 
-	return scheduler.Evaluate(scheduled, now), nil
+	now = now.UTC()
+	var resolved []scheduler.ScheduledProgram
+	for day := 0; day <= lookaheadDays; day++ {
+		resolved = append(resolved, ResolveDate(slots, mediaByID, now.AddDate(0, 0, day))...)
+	}
+	return scheduler.Evaluate(resolved, now), nil
+}
+
+// ResolvedWindow returns every slot occurrence between from (inclusive) and
+// to (exclusive), resolving one calendar day at a time. Used by the Guide
+// screen and the weekly schedule timeline, both of which need concrete
+// occurrences over a bounded window rather than the raw (and, for a
+// recurring slot, effectively infinite) slot list.
+func (s *Service) ResolvedWindow(ctx context.Context, channelID int64, from, to time.Time) ([]scheduler.ScheduledProgram, error) {
+	slots, err := s.slots.ListByChannel(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	mediaByID, err := s.mediaByIDForSlots(ctx, slots)
+	if err != nil {
+		return nil, err
+	}
+
+	from, to = from.UTC(), to.UTC()
+	var resolved []scheduler.ScheduledProgram
+	for d := from; d.Before(to); d = d.AddDate(0, 0, 1) {
+		resolved = append(resolved, ResolveDate(slots, mediaByID, d)...)
+	}
+	return resolved, nil
 }
