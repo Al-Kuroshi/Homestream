@@ -77,3 +77,11 @@
   object-fit: cover;
   display: block;
 }
+
+.day-drop-zone {
+  min-height: 8px;
+}
+
+.day-drop-zone:hover {
+  background: rgba(255, 255, 255, 0.08);
+}

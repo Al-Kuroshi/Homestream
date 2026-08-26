@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -56,6 +56,10 @@ function renderScreen(overrides?: { slots?: Slot[]; resolved?: ResolvedSlot[] })
   );
 }
 
+function dragEventWithData(data: unknown) {
+  return { dataTransfer: { getData: () => JSON.stringify(data), setData: () => {} } };
+}
+
 describe("ChannelScheduleScreen", () => {
   it("renders the channel name, 7 day columns, and a media-library panel entry per media item", async () => {
     renderScreen();
@@ -89,5 +93,51 @@ describe("ChannelScheduleScreen", () => {
     });
     const block = await screen.findByTestId("slot-block-2");
     expect(block).toHaveTextContent("Ad Break");
+  });
+
+  it("drops a media item from the library panel onto an empty day, adding a recurring slot at position 1000", async () => {
+    renderScreen({ slots: [], resolved: [] });
+    server.use(
+      http.post("/api/channels/1/slots", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        expect(body).toMatchObject({ kind: "media", media_item_id: 5, recurring: true, position: 1000 });
+        return HttpResponse.json({ id: 9, ...body }, { status: 201 });
+      })
+    );
+
+    const mediaItem = await screen.findByText("Fury");
+    const dropZone = (await screen.findAllByTestId(/day-drop-zone-/))[0];
+    fireEvent.dragStart(mediaItem, dragEventWithData({ mediaItemId: 5 }));
+    fireEvent.drop(dropZone, dragEventWithData({ mediaItemId: 5 }));
+  });
+
+  it("shows an inline error when the backend rejects a placement", async () => {
+    renderScreen({ slots: [], resolved: [] });
+    server.use(
+      http.post("/api/channels/1/slots", () => HttpResponse.json({ error: "doesn't fit: this day is already full" }, { status: 400 }))
+    );
+
+    const mediaItem = await screen.findByText("Fury");
+    const dropZone = (await screen.findAllByTestId(/day-drop-zone-/))[0];
+    fireEvent.dragStart(mediaItem, dragEventWithData({ mediaItemId: 5 }));
+    fireEvent.drop(dropZone, dragEventWithData({ mediaItemId: 5 }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("doesn't fit: this day is already full");
+  });
+
+  it("moves an existing slot when it's dragged to a different drop zone", async () => {
+    renderScreen(); // defaults: SLOTS has id=1 (day_of_week: 1, position: 1000), RESOLVED has a matching occurrence on MONDAY_THIS_WEEK
+    server.use(
+      http.put("/api/slots/1", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        expect(body).toMatchObject({ recurring: true, position: 2000 });
+        return HttpResponse.json({ id: 1, ...body });
+      })
+    );
+
+    const block = await screen.findByTestId("slot-block-1");
+    const endZone = await screen.findByTestId("day-drop-zone-1-end");
+    fireEvent.dragStart(block, dragEventWithData({ existingSlotId: 1 }));
+    fireEvent.drop(endZone, dragEventWithData({ existingSlotId: 1 }));
   });
 });
