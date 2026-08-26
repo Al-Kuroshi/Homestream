@@ -93,7 +93,7 @@ func TestChannelsAPI_MissingChannelIsConsistently404(t *testing.T) {
 	paths := []string{
 		"/api/channels/999999",
 		"/api/channels/999999/now",
-		"/api/channels/999999/programs",
+		"/api/channels/999999/slots",
 	}
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
@@ -109,15 +109,15 @@ func TestChannelsAPI_MissingChannelIsConsistently404(t *testing.T) {
 	}
 }
 
-// TestProgramsAPI_UpdateRejectsEmptyBody guards the PUT validation: without
+// TestSlotsAPI_UpdateRejectsEmptyBody guards the PUT validation: without
 // it a partial body silently wrote media_item_id = 0, orphaning the slot.
-func TestProgramsAPI_UpdateRejectsEmptyBody(t *testing.T) {
+func TestSlotsAPI_UpdateRejectsEmptyBody(t *testing.T) {
 	ctx := context.Background()
 	conn := db.OpenTest(t)
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
 	itemRepo := sqlite.NewMediaItemRepository(conn)
 	channelRepo := sqlite.NewChannelRepository(conn)
-	programRepo := sqlite.NewProgramRepository(conn)
+	slotRepo := sqlite.NewSlotRepository(conn)
 
 	source := &model.MediaSource{Name: "Movies", Path: "/media/movies"}
 	if err := sourceRepo.Create(ctx, source); err != nil {
@@ -132,9 +132,10 @@ func TestProgramsAPI_UpdateRejectsEmptyBody(t *testing.T) {
 		t.Fatalf("failed to create channel: %v", err)
 	}
 	start := time.Date(2026, 1, 1, 18, 0, 0, 0, time.UTC)
-	program := &model.Program{ChannelID: channel.ID, MediaItemID: item.ID, StartTime: start}
-	if err := programRepo.Create(ctx, program); err != nil {
-		t.Fatalf("failed to create program: %v", err)
+	mediaItemID := item.ID
+	slot := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &mediaItemID, Recurring: false, StartTime: &start}
+	if err := slotRepo.Create(ctx, slot); err != nil {
+		t.Fatalf("failed to create slot: %v", err)
 	}
 
 	srv, _ := newTestServerWithConn(t, conn)
@@ -143,16 +144,16 @@ func TestProgramsAPI_UpdateRejectsEmptyBody(t *testing.T) {
 
 	bodies := map[string]string{
 		"empty object":       `{}`,
-		"missing start_time": `{"media_item_id": ` + strconv.FormatInt(item.ID, 10) + `}`,
-		"missing media item": `{"start_time": "2026-01-01T19:00:00Z"}`,
+		"missing start_time": `{"kind": "media", "media_item_id": ` + strconv.FormatInt(item.ID, 10) + `, "recurring": false}`,
+		"missing media item": `{"kind": "media", "recurring": false, "start_time": "2026-01-01T19:00:00Z"}`,
 	}
 	for name, body := range bodies {
 		t.Run(name, func(t *testing.T) {
 			req, _ := http.NewRequest(http.MethodPut,
-				ts.URL+"/api/programs/"+strconv.FormatInt(program.ID, 10), bytes.NewReader([]byte(body)))
+				ts.URL+"/api/slots/"+strconv.FormatInt(slot.ID, 10), bytes.NewReader([]byte(body)))
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
-				t.Fatalf("PUT program failed: %v", err)
+				t.Fatalf("PUT slot failed: %v", err)
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusBadRequest {
@@ -161,17 +162,17 @@ func TestProgramsAPI_UpdateRejectsEmptyBody(t *testing.T) {
 		})
 	}
 
-	// The stored program must be untouched by the rejected requests.
-	stored, err := programRepo.Get(ctx, program.ID)
+	// The stored slot must be untouched by the rejected requests.
+	stored, err := slotRepo.Get(ctx, slot.ID)
 	if err != nil {
-		t.Fatalf("failed to re-read program: %v", err)
+		t.Fatalf("failed to re-read slot: %v", err)
 	}
-	if stored.MediaItemID != item.ID || !stored.StartTime.Equal(start) {
-		t.Errorf("expected the program to be unchanged, got %+v", stored)
+	if stored.MediaItemID == nil || *stored.MediaItemID != item.ID || stored.StartTime == nil || !stored.StartTime.Equal(start) {
+		t.Errorf("expected the slot to be unchanged, got %+v", stored)
 	}
 }
 
-func TestProgramsAPI_AddListUpdateDelete(t *testing.T) {
+func TestSlotsAPI_AddListUpdateDelete(t *testing.T) {
 	ctx := context.Background()
 	conn := db.OpenTest(t)
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
@@ -196,45 +197,45 @@ func TestProgramsAPI_AddListUpdateDelete(t *testing.T) {
 	defer ts.Close()
 
 	start := time.Date(2026, 1, 1, 18, 0, 0, 0, time.UTC)
-	body, _ := json.Marshal(map[string]any{"media_item_id": item.ID, "start_time": start})
-	resp, err := http.Post(ts.URL+"/api/channels/"+strconv.FormatInt(channel.ID, 10)+"/programs", "application/json", bytes.NewReader(body))
+	body, _ := json.Marshal(map[string]any{"kind": "media", "media_item_id": item.ID, "recurring": false, "start_time": start})
+	resp, err := http.Post(ts.URL+"/api/channels/"+strconv.FormatInt(channel.ID, 10)+"/slots", "application/json", bytes.NewReader(body))
 	if err != nil {
-		t.Fatalf("POST program failed: %v", err)
+		t.Fatalf("POST slot failed: %v", err)
 	}
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", resp.StatusCode)
 	}
-	var created model.Program
+	var created model.Slot
 	json.NewDecoder(resp.Body).Decode(&created)
 	resp.Body.Close()
 
-	listResp, err := http.Get(ts.URL + "/api/channels/" + strconv.FormatInt(channel.ID, 10) + "/programs")
+	listResp, err := http.Get(ts.URL + "/api/channels/" + strconv.FormatInt(channel.ID, 10) + "/slots")
 	if err != nil {
-		t.Fatalf("GET programs failed: %v", err)
+		t.Fatalf("GET slots failed: %v", err)
 	}
-	var programs []model.Program
-	json.NewDecoder(listResp.Body).Decode(&programs)
+	var slots []model.Slot
+	json.NewDecoder(listResp.Body).Decode(&slots)
 	listResp.Body.Close()
-	if len(programs) != 1 {
-		t.Fatalf("expected 1 program, got %d", len(programs))
+	if len(slots) != 1 {
+		t.Fatalf("expected 1 slot, got %d", len(slots))
 	}
 
 	newStart := start.Add(time.Hour)
-	updateBody, _ := json.Marshal(map[string]any{"media_item_id": item.ID, "start_time": newStart})
-	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/programs/"+strconv.FormatInt(created.ID, 10), bytes.NewReader(updateBody))
+	updateBody, _ := json.Marshal(map[string]any{"kind": "media", "media_item_id": item.ID, "recurring": false, "start_time": newStart})
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/slots/"+strconv.FormatInt(created.ID, 10), bytes.NewReader(updateBody))
 	updResp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("PUT program failed: %v", err)
+		t.Fatalf("PUT slot failed: %v", err)
 	}
 	if updResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", updResp.StatusCode)
 	}
 	updResp.Body.Close()
 
-	delReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/programs/"+strconv.FormatInt(created.ID, 10), nil)
+	delReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/slots/"+strconv.FormatInt(created.ID, 10), nil)
 	delResp, err := http.DefaultClient.Do(delReq)
 	if err != nil {
-		t.Fatalf("DELETE program failed: %v", err)
+		t.Fatalf("DELETE slot failed: %v", err)
 	}
 	if delResp.StatusCode != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", delResp.StatusCode)

@@ -48,9 +48,9 @@ func TestFullUserJourney(t *testing.T) {
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
 	itemRepo := sqlite.NewMediaItemRepository(conn)
 	channelRepo := sqlite.NewChannelRepository(conn)
-	programRepo := sqlite.NewProgramRepository(conn)
+	slotRepo := sqlite.NewSlotRepository(conn)
 	scanner := mediastore.NewScanner(sourceRepo, itemRepo)
-	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
+	channelSvc := channels.NewService(channelRepo, slotRepo, itemRepo)
 	server := api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
 	ts := httptest.NewServer(server.Routes())
 	defer ts.Close()
@@ -110,8 +110,8 @@ func TestFullUserJourney(t *testing.T) {
 	// offset leaves margin against slower CI while staying well under the
 	// 10s program length.
 	start := time.Now().UTC().Add(-3 * time.Second)
-	progBody, _ := json.Marshal(map[string]any{"media_item_id": item.ID, "start_time": start})
-	progResp, err := http.Post(ts.URL+"/api/channels/"+strconv.FormatInt(channel.ID, 10)+"/programs", "application/json", bytes.NewReader(progBody))
+	progBody, _ := json.Marshal(map[string]any{"kind": "media", "media_item_id": item.ID, "recurring": false, "start_time": start})
+	progResp, err := http.Post(ts.URL+"/api/channels/"+strconv.FormatInt(channel.ID, 10)+"/slots", "application/json", bytes.NewReader(progBody))
 	if err != nil {
 		t.Fatalf("add program failed: %v", err)
 	}
@@ -151,9 +151,9 @@ func TestFullUserJourney_Playback(t *testing.T) {
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
 	itemRepo := sqlite.NewMediaItemRepository(conn)
 	channelRepo := sqlite.NewChannelRepository(conn)
-	programRepo := sqlite.NewProgramRepository(conn)
+	slotRepo := sqlite.NewSlotRepository(conn)
 	scanner := mediastore.NewScanner(sourceRepo, itemRepo)
-	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
+	channelSvc := channels.NewService(channelRepo, slotRepo, itemRepo)
 
 	sessions := playback.NewSessionManager(t.TempDir(), time.Minute)
 	defer sessions.Close()
@@ -206,8 +206,8 @@ func TestFullUserJourney_Playback(t *testing.T) {
 	chResp.Body.Close()
 
 	start := time.Now().UTC().Add(-3 * time.Second)
-	progBody, _ := json.Marshal(map[string]any{"media_item_id": item.ID, "start_time": start})
-	progResp, err := http.Post(ts.URL+"/api/channels/"+strconv.FormatInt(channel.ID, 10)+"/programs", "application/json", bytes.NewReader(progBody))
+	progBody, _ := json.Marshal(map[string]any{"kind": "media", "media_item_id": item.ID, "recurring": false, "start_time": start})
+	progResp, err := http.Post(ts.URL+"/api/channels/"+strconv.FormatInt(channel.ID, 10)+"/slots", "application/json", bytes.NewReader(progBody))
 	if err != nil {
 		t.Fatalf("add program failed: %v", err)
 	}

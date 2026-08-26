@@ -20,7 +20,7 @@ func TestChannelNowAPI_CurrentProgram(t *testing.T) {
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
 	itemRepo := sqlite.NewMediaItemRepository(conn)
 	channelRepo := sqlite.NewChannelRepository(conn)
-	programRepo := sqlite.NewProgramRepository(conn)
+	slotRepo := sqlite.NewSlotRepository(conn)
 
 	source := &model.MediaSource{Name: "Movies", Path: "/media/movies"}
 	if err := sourceRepo.Create(ctx, source); err != nil {
@@ -35,8 +35,9 @@ func TestChannelNowAPI_CurrentProgram(t *testing.T) {
 		t.Fatalf("failed to create channel: %v", err)
 	}
 	start := time.Now().UTC().Add(-30 * time.Minute)
-	if err := programRepo.Create(ctx, &model.Program{ChannelID: channel.ID, MediaItemID: item.ID, StartTime: start}); err != nil {
-		t.Fatalf("failed to create program: %v", err)
+	mediaItemID := item.ID
+	if err := slotRepo.Create(ctx, &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &mediaItemID, Recurring: false, StartTime: &start}); err != nil {
+		t.Fatalf("failed to create slot: %v", err)
 	}
 
 	srv, _ := newTestServerWithConn(t, conn)

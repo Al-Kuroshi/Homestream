@@ -33,10 +33,10 @@ func main() {
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
 	itemRepo := sqlite.NewMediaItemRepository(conn)
 	channelRepo := sqlite.NewChannelRepository(conn)
-	programRepo := sqlite.NewProgramRepository(conn)
+	slotRepo := sqlite.NewSlotRepository(conn)
 
 	scanner := mediastore.NewScanner(sourceRepo, itemRepo)
-	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
+	channelSvc := channels.NewService(channelRepo, slotRepo, itemRepo)
 
 	sessionsDir := getEnv("PERSONALTV_SESSIONS_DIR", filepath.Join(os.TempDir(), "personaltv-playback"))
 	if err := playback.CleanOrphanedSessions(sessionsDir); err != nil {

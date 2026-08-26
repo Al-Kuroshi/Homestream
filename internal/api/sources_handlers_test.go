@@ -30,9 +30,9 @@ func newTestServer(t *testing.T) (*api.Server, *playback.SessionManager) {
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
 	itemRepo := sqlite.NewMediaItemRepository(conn)
 	channelRepo := sqlite.NewChannelRepository(conn)
-	programRepo := sqlite.NewProgramRepository(conn)
+	slotRepo := sqlite.NewSlotRepository(conn)
 	scanner := mediastore.NewScanner(sourceRepo, itemRepo)
-	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
+	channelSvc := channels.NewService(channelRepo, slotRepo, itemRepo)
 	srv := api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
 
 	sessions := playback.NewSessionManager(t.TempDir(), time.Minute)
@@ -47,9 +47,9 @@ func newTestServerWithConn(t *testing.T, conn *sql.DB) (*api.Server, *playback.S
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
 	itemRepo := sqlite.NewMediaItemRepository(conn)
 	channelRepo := sqlite.NewChannelRepository(conn)
-	programRepo := sqlite.NewProgramRepository(conn)
+	slotRepo := sqlite.NewSlotRepository(conn)
 	scanner := mediastore.NewScanner(sourceRepo, itemRepo)
-	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
+	channelSvc := channels.NewService(channelRepo, slotRepo, itemRepo)
 	srv := api.NewServer(sourceRepo, itemRepo, scanner, channelSvc)
 
 	sessions := playback.NewSessionManager(t.TempDir(), time.Minute)
@@ -185,9 +185,9 @@ func TestMediaAPI_ListEmpty(t *testing.T) {
 	}
 }
 
-// TestProgramsAPI_ListEmptyForExistingChannel is the same raw-body check for
-// the per-channel programs list.
-func TestProgramsAPI_ListEmptyForExistingChannel(t *testing.T) {
+// TestSlotsAPI_ListEmptyForExistingChannel is the same raw-body check for
+// the per-channel slots list.
+func TestSlotsAPI_ListEmptyForExistingChannel(t *testing.T) {
 	ctx := context.Background()
 	conn := db.OpenTest(t)
 	channelRepo := sqlite.NewChannelRepository(conn)
@@ -200,9 +200,9 @@ func TestProgramsAPI_ListEmptyForExistingChannel(t *testing.T) {
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/api/channels/" + strconv.FormatInt(channel.ID, 10) + "/programs")
+	resp, err := http.Get(ts.URL + "/api/channels/" + strconv.FormatInt(channel.ID, 10) + "/slots")
 	if err != nil {
-		t.Fatalf("GET programs failed: %v", err)
+		t.Fatalf("GET slots failed: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

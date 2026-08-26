@@ -59,10 +59,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/channels/{id}", s.handleUpdateChannel)
 	mux.HandleFunc("DELETE /api/channels/{id}", s.handleDeleteChannel)
 
-	mux.HandleFunc("GET /api/channels/{id}/programs", s.handleListPrograms)
-	mux.HandleFunc("POST /api/channels/{id}/programs", s.handleAddProgram)
-	mux.HandleFunc("PUT /api/programs/{id}", s.handleUpdateProgram)
-	mux.HandleFunc("DELETE /api/programs/{id}", s.handleDeleteProgram)
+	mux.HandleFunc("GET /api/channels/{id}/slots", s.handleListSlots)
+	mux.HandleFunc("POST /api/channels/{id}/slots", s.handleAddSlot)
+	mux.HandleFunc("GET /api/channels/{id}/slots/resolved", s.handleResolvedSlots)
+	mux.HandleFunc("PUT /api/slots/{id}", s.handleUpdateSlot)
+	mux.HandleFunc("DELETE /api/slots/{id}", s.handleDeleteSlot)
 
 	mux.HandleFunc("GET /api/channels/{id}/now", s.handleChannelNow)
 	mux.HandleFunc("POST /api/channels/{id}/watch", s.handleChannelWatch)

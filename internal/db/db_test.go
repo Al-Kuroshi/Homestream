@@ -11,7 +11,7 @@ import (
 func TestOpen_CreatesSchema(t *testing.T) {
 	conn := db.OpenTest(t)
 
-	tables := []string{"media_sources", "media_items", "channels", "programs"}
+	tables := []string{"media_sources", "media_items", "channels", "slots"}
 	for _, table := range tables {
 		var name string
 		err := conn.QueryRow(
