@@ -43,10 +43,10 @@ type ChannelRepository interface {
 	Delete(ctx context.Context, id int64) error
 }
 
-type ProgramRepository interface {
-	Create(ctx context.Context, p *model.Program) error
-	Get(ctx context.Context, id int64) (*model.Program, error)
-	ListByChannel(ctx context.Context, channelID int64) ([]*model.Program, error)
-	Update(ctx context.Context, p *model.Program) error
+type SlotRepository interface {
+	Create(ctx context.Context, s *model.Slot) error
+	Get(ctx context.Context, id int64) (*model.Slot, error)
+	ListByChannel(ctx context.Context, channelID int64) ([]*model.Slot, error)
+	Update(ctx context.Context, s *model.Slot) error
 	Delete(ctx context.Context, id int64) error
 }
