@@ -85,3 +85,18 @@
 .day-drop-zone:hover {
   background: rgba(255, 255, 255, 0.08);
 }
+
+.media-library-gap-item {
+  border-style: dashed;
+}
+
+.pending-placement-form {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}

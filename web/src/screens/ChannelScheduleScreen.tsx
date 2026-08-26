@@ -12,6 +12,10 @@ import "./ChannelScheduleScreen.css";
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MS_PER_HOUR = 60 * 60 * 1000;
 
+type PendingPlacement =
+  | { kind: "media"; mediaItemId?: number; dayOfWeek: number; date: Date; insertBeforeIndex: number; existingSlotId?: number }
+  | { kind: "gap"; dayOfWeek: number; date: Date; insertBeforeIndex: number; existingSlotId?: number };
+
 // No cover-art metadata exists in the backend yet (deferred future work,
 // per the design spec) — always undefined, so every slot block below falls
 // back to its text title/label. Isolated here so wiring in a real field
@@ -53,6 +57,10 @@ export function ChannelScheduleScreen() {
   const addSlotMutation = useAddSlot(channelId);
   const updateSlotMutation = useUpdateSlot(channelId);
 
+  const [pending, setPending] = useState<PendingPlacement | null>(null);
+  const [pendingRecurring, setPendingRecurring] = useState(true);
+  const [pendingGapMinutes, setPendingGapMinutes] = useState("5");
+
   function handleDragStartMedia(e: DragEvent, mediaItemId: number) {
     e.dataTransfer.setData("application/json", JSON.stringify({ mediaItemId }));
   }
@@ -61,45 +69,76 @@ export function ChannelScheduleScreen() {
     e.dataTransfer.setData("application/json", JSON.stringify({ existingSlotId }));
   }
 
-  function handleDrop(e: DragEvent, dayOfWeek: number, insertBeforeIndex: number) {
+  function handleDrop(e: DragEvent, dayOfWeek: number, date: Date, insertBeforeIndex: number) {
     e.preventDefault();
     const payload = JSON.parse(e.dataTransfer.getData("application/json")) as
       | { mediaItemId: number }
-      | { existingSlotId: number };
+      | { existingSlotId: number }
+      | { gap: true };
 
-    const daySlotIds = new Set(
-      (slots ?? []).filter((s) => s.recurring && s.day_of_week === dayOfWeek).map((s) => s.id)
-    );
-    const existingPositions = (slots ?? [])
-      .filter((s) => daySlotIds.has(s.id) && ("existingSlotId" in payload ? s.id !== payload.existingSlotId : true))
-      .map((s) => s.position ?? 0);
-    const position = positionForInsert(existingPositions, insertBeforeIndex);
-
-    if ("mediaItemId" in payload) {
-      addSlotMutation.mutate({
-        channelId,
-        kind: "media",
-        media_item_id: payload.mediaItemId,
-        recurring: true,
-        day_of_week: dayOfWeek,
-        position,
-      });
+    setPendingRecurring(true);
+    if ("gap" in payload) {
+      setPending({ kind: "gap", dayOfWeek, date, insertBeforeIndex });
       return;
     }
-
+    if ("mediaItemId" in payload) {
+      setPending({ kind: "media", mediaItemId: payload.mediaItemId, dayOfWeek, date, insertBeforeIndex });
+      return;
+    }
     const existing = slotsById.get(payload.existingSlotId);
     if (!existing) return;
-    updateSlotMutation.mutate({
-      id: existing.id,
+    if (existing.kind === "gap") {
+      setPending({ kind: "gap", dayOfWeek, date, insertBeforeIndex, existingSlotId: existing.id });
+    } else {
+      setPending({
+        kind: "media",
+        mediaItemId: existing.media_item_id ?? undefined,
+        dayOfWeek,
+        date,
+        insertBeforeIndex,
+        existingSlotId: existing.id,
+      });
+    }
+  }
+
+  function computePosition(dayOfWeek: number, insertBeforeIndex: number, excludeSlotId?: number) {
+    const daySlots = (slots ?? [])
+      .filter((s) => s.recurring && s.day_of_week === dayOfWeek)
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const excludeIndex = excludeSlotId !== undefined ? daySlots.findIndex((s) => s.id === excludeSlotId) : -1;
+    const adjustedIndex = excludeIndex !== -1 && excludeIndex < insertBeforeIndex ? insertBeforeIndex - 1 : insertBeforeIndex;
+    const existingPositions = daySlots.filter((s) => s.id !== excludeSlotId).map((s) => s.position ?? 0);
+    return positionForInsert(existingPositions, adjustedIndex);
+  }
+
+  function computeOneOffStartTime(date: Date, insertBeforeIndex: number): string {
+    const dayBlocks = slotsForDate(resolved ?? [], slotsById, date);
+    if (insertBeforeIndex <= 0) return date.toISOString();
+    const previous = dayBlocks[insertBeforeIndex - 1];
+    return previous ? previous.resolved.end_time : date.toISOString();
+  }
+
+  function confirmPending() {
+    if (!pending) return;
+    const base = {
       channelId,
-      kind: existing.kind,
-      media_item_id: existing.media_item_id ?? undefined,
-      gap_duration_sec: existing.gap_duration_sec ?? undefined,
-      gap_label: existing.gap_label,
-      recurring: true,
-      day_of_week: dayOfWeek,
-      position,
-    });
+      recurring: pendingRecurring,
+      ...(pendingRecurring
+        ? { day_of_week: pending.dayOfWeek, position: computePosition(pending.dayOfWeek, pending.insertBeforeIndex, pending.existingSlotId) }
+        : { start_time: computeOneOffStartTime(pending.date, pending.insertBeforeIndex) }),
+    };
+    const body =
+      pending.kind === "gap"
+        ? { ...base, kind: "gap" as const, gap_duration_sec: Number(pendingGapMinutes) * 60, gap_label: "Gap" }
+        : { ...base, kind: "media" as const, media_item_id: pending.mediaItemId! };
+
+    if (pending.existingSlotId !== undefined) {
+      const existing = slotsById.get(pending.existingSlotId)!;
+      updateSlotMutation.mutate({ id: existing.id, ...body });
+    } else {
+      addSlotMutation.mutate(body);
+    }
+    setPending(null);
   }
 
   if (channelLoading || resolvedLoading) return <p>Loading schedule…</p>;
@@ -117,6 +156,13 @@ export function ChannelScheduleScreen() {
         <aside className="media-library-panel">
           <h2>Media library</h2>
           <ul>
+            <li
+              className="media-library-item media-library-gap-item"
+              draggable
+              onDragStart={(e) => e.dataTransfer.setData("application/json", JSON.stringify({ gap: true }))}
+            >
+              <span>Gap / Break</span>
+            </li>
             {(media ?? []).map((item) => (
               <li
                 key={item.id}
@@ -132,6 +178,33 @@ export function ChannelScheduleScreen() {
         <div className="week-grid">
           <MutationError isError={addSlotMutation.isError} error={addSlotMutation.error} />
           <MutationError isError={updateSlotMutation.isError} error={updateSlotMutation.error} />
+          {pending && (
+            <div className="pending-placement-form" role="dialog" aria-label="Confirm placement">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={pendingRecurring}
+                  onChange={(e) => setPendingRecurring(e.target.checked)}
+                  aria-label="Repeats weekly"
+                />
+                Repeats weekly
+              </label>
+              {pending.kind === "gap" && (
+                <label>
+                  Gap duration (minutes)
+                  <input
+                    type="number"
+                    min={1}
+                    value={pendingGapMinutes}
+                    onChange={(e) => setPendingGapMinutes(e.target.value)}
+                    aria-label="Gap duration (minutes)"
+                  />
+                </label>
+              )}
+              <button onClick={confirmPending}>{pending.kind === "gap" ? "Add gap" : "Add"}</button>
+              <button onClick={() => setPending(null)}>Cancel</button>
+            </div>
+          )}
           {days.map((day, i) => {
             const dayOfWeek = day.getUTCDay();
             const daySlots = slotsForDate(resolved ?? [], slotsById, day);
@@ -144,7 +217,7 @@ export function ChannelScheduleScreen() {
                   className="day-drop-zone"
                   data-testid={`day-drop-zone-${dayOfWeek}-start`}
                   onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => handleDrop(e, dayOfWeek, 0)}
+                  onDrop={(e) => handleDrop(e, dayOfWeek, day, 0)}
                 />
                 {daySlots.map(({ slot, resolved: r }, index) => {
                   const heightPercent = ((new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / (24 * MS_PER_HOUR)) * 100;
@@ -166,7 +239,7 @@ export function ChannelScheduleScreen() {
                         className="day-drop-zone"
                         data-testid={`day-drop-zone-${dayOfWeek}-${index === daySlots.length - 1 ? "end" : index}`}
                         onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => handleDrop(e, dayOfWeek, index + 1)}
+                        onDrop={(e) => handleDrop(e, dayOfWeek, day, index + 1)}
                       />
                     </div>
                   );

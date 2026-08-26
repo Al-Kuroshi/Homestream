@@ -112,6 +112,9 @@ describe("ChannelScheduleScreen", () => {
     const dropZone = (await screen.findAllByTestId(/day-drop-zone-/))[0];
     fireEvent.dragStart(mediaItem, dragEventWithData({ mediaItemId: 5 }));
     fireEvent.drop(dropZone, dragEventWithData({ mediaItemId: 5 }));
+    // Dropping only stages a pending placement now (Task 11); confirming
+    // with the default recurring checkbox fires the actual mutation.
+    fireEvent.click(await screen.findByText("Add"));
 
     await waitFor(() =>
       expect(capturedBody).toMatchObject({ kind: "media", media_item_id: 5, recurring: true, position: 1000 })
@@ -128,6 +131,7 @@ describe("ChannelScheduleScreen", () => {
     const dropZone = (await screen.findAllByTestId(/day-drop-zone-/))[0];
     fireEvent.dragStart(mediaItem, dragEventWithData({ mediaItemId: 5 }));
     fireEvent.drop(dropZone, dragEventWithData({ mediaItemId: 5 }));
+    fireEvent.click(await screen.findByText("Add"));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("doesn't fit: this day is already full");
   });
@@ -152,6 +156,7 @@ describe("ChannelScheduleScreen", () => {
     const endZone = await screen.findByTestId("day-drop-zone-1-end");
     fireEvent.dragStart(block, dragEventWithData({ existingSlotId: 1 }));
     fireEvent.drop(endZone, dragEventWithData({ existingSlotId: 1 }));
+    fireEvent.click(await screen.findByText("Add"));
 
     // position 1000, not 2000: handleDrop's existingPositions excludes the
     // dragged slot's own id from the target day before calling
@@ -161,5 +166,52 @@ describe("ChannelScheduleScreen", () => {
     // positionForInsert returns the empty-list default (1000) regardless of
     // insertBeforeIndex. Verified directly against positionForInsert.
     await waitFor(() => expect(capturedBody).toMatchObject({ recurring: true, position: 1000 }));
+  });
+
+  it("dropping the Gap entry opens a duration prompt, and confirming adds a recurring gap slot", async () => {
+    renderScreen({ slots: [], resolved: [] });
+    let capturedBody: Record<string, unknown> | undefined;
+    server.use(
+      http.post("/api/channels/1/slots", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 9, ...capturedBody }, { status: 201 });
+      })
+    );
+
+    const gapEntry = await screen.findByText("Gap / Break");
+    const dropZone = (await screen.findAllByTestId(/day-drop-zone-/))[0];
+    fireEvent.dragStart(gapEntry, dragEventWithData({ gap: true }));
+    fireEvent.drop(dropZone, dragEventWithData({ gap: true }));
+
+    fireEvent.change(await screen.findByLabelText("Gap duration (minutes)"), { target: { value: "5" } });
+    fireEvent.click(screen.getByText("Add gap"));
+
+    await waitFor(() => expect(capturedBody).toMatchObject({ kind: "gap", gap_duration_sec: 300, recurring: true, position: 1000 }));
+  });
+
+  it("unchecking Repeats weekly places a one-off slot with the dropped column's exact date instead of day_of_week/position", async () => {
+    renderScreen({ slots: [], resolved: [] });
+    let capturedBody: Record<string, unknown> | undefined;
+    server.use(
+      http.post("/api/channels/1/slots", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 9, ...capturedBody }, { status: 201 });
+      })
+    );
+
+    const mediaItem = await screen.findByText("Fury");
+    const dropZone = (await screen.findAllByTestId(/day-drop-zone-/))[0];
+    fireEvent.dragStart(mediaItem, dragEventWithData({ mediaItemId: 5 }));
+    fireEvent.drop(dropZone, dragEventWithData({ mediaItemId: 5 }));
+
+    fireEvent.click(await screen.findByLabelText("Repeats weekly"));
+    fireEvent.click(screen.getByText("Add"));
+
+    await waitFor(() => {
+      expect(capturedBody).toMatchObject({ kind: "media", media_item_id: 5, recurring: false });
+      expect(capturedBody?.start_time).toBeTruthy();
+      expect(capturedBody?.day_of_week).toBeUndefined();
+      expect(capturedBody?.position).toBeUndefined();
+    });
   });
 });
