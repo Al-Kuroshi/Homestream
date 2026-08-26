@@ -299,6 +299,100 @@ func TestService_AddSlot_AcceptsOneOffInAGenuineGap(t *testing.T) {
 	}
 }
 
+// The mirror image of TestService_AddSlot_RejectsOneOffOverlappingARecurringSlot:
+// the same collision, created in the other order. Before this check the
+// recurring branch only summed that weekday's recurring durations against
+// 24h and never looked at one-off slots at all, so placing the one-off first
+// and the recurring slot second silently produced an overlapping schedule.
+func TestService_AddSlot_RejectsRecurringOverlappingAnExistingOneOff(t *testing.T) {
+	ctx := context.Background()
+	svc, channel, item := newServiceWithChannelAndMediaItem(t, 3600) // 1h-long
+
+	// A Monday: 2026-08-31. Book a one-off at 00:30-01:30 first.
+	oneOffStart := time.Date(2026, 8, 31, 0, 30, 0, 0, time.UTC)
+	oneOff := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: false, StartTime: &oneOffStart}
+	if err := svc.AddSlot(ctx, oneOff); err != nil {
+		t.Fatalf("AddSlot (one-off): %v", err)
+	}
+
+	// A recurring Monday slot at the head of the chain resolves to
+	// 00:00-01:00, which overlaps the one-off's 00:30 start.
+	dayOfWeek, position := int(oneOffStart.Weekday()), 1000
+	recurring := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: true, DayOfWeek: &dayOfWeek, Position: &position}
+	err := svc.AddSlot(ctx, recurring)
+	var verr *channels.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("AddSlot (recurring overlapping an existing one-off): got err %v, want a *channels.ValidationError", err)
+	}
+}
+
+func TestService_AddSlot_AcceptsRecurringThatClearsEveryExistingOneOff(t *testing.T) {
+	ctx := context.Background()
+	svc, channel, item := newServiceWithChannelAndMediaItem(t, 3600)
+
+	// One-off at 05:00-06:00 on Monday 2026-08-31.
+	oneOffStart := time.Date(2026, 8, 31, 5, 0, 0, 0, time.UTC)
+	oneOff := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: false, StartTime: &oneOffStart}
+	if err := svc.AddSlot(ctx, oneOff); err != nil {
+		t.Fatalf("AddSlot (one-off): %v", err)
+	}
+
+	// A recurring Monday slot resolves to 00:00-01:00 — nowhere near it.
+	dayOfWeek, position := int(oneOffStart.Weekday()), 1000
+	recurring := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: true, DayOfWeek: &dayOfWeek, Position: &position}
+	if err := svc.AddSlot(ctx, recurring); err != nil {
+		t.Fatalf("AddSlot (recurring clear of every one-off): %v", err)
+	}
+}
+
+// A one-off on a *different* weekday must not constrain the candidate at all.
+func TestService_AddSlot_IgnoresOneOffsOnOtherWeekdays(t *testing.T) {
+	ctx := context.Background()
+	svc, channel, item := newServiceWithChannelAndMediaItem(t, 3600)
+
+	// Tuesday 2026-09-01, 00:30 — would overlap if weekdays were ignored.
+	oneOffStart := time.Date(2026, 9, 1, 0, 30, 0, 0, time.UTC)
+	oneOff := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: false, StartTime: &oneOffStart}
+	if err := svc.AddSlot(ctx, oneOff); err != nil {
+		t.Fatalf("AddSlot (one-off): %v", err)
+	}
+
+	monday, position := int(time.Monday), 1000
+	recurring := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: true, DayOfWeek: &monday, Position: &position}
+	if err := svc.AddSlot(ctx, recurring); err != nil {
+		t.Fatalf("AddSlot (recurring on a weekday with no one-offs): %v", err)
+	}
+}
+
+// Moving a recurring slot is validated the same way an insert is: the update
+// path must reject a move that pushes the chain onto an existing one-off.
+func TestService_UpdateSlot_RejectsRecurringMoveOntoAnExistingOneOff(t *testing.T) {
+	ctx := context.Background()
+	svc, channel, item := newServiceWithChannelAndMediaItem(t, 3600)
+
+	// One-off on Monday 2026-08-31 at 00:30-01:30.
+	oneOffStart := time.Date(2026, 8, 31, 0, 30, 0, 0, time.UTC)
+	oneOff := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: false, StartTime: &oneOffStart}
+	if err := svc.AddSlot(ctx, oneOff); err != nil {
+		t.Fatalf("AddSlot (one-off): %v", err)
+	}
+
+	// A recurring slot parked on Tuesday, where it collides with nothing.
+	tuesday, position := int(time.Tuesday), 1000
+	recurring := &model.Slot{ChannelID: channel.ID, Kind: model.SlotKindMedia, MediaItemID: &item.ID, Recurring: true, DayOfWeek: &tuesday, Position: &position}
+	if err := svc.AddSlot(ctx, recurring); err != nil {
+		t.Fatalf("AddSlot (recurring): %v", err)
+	}
+
+	monday := int(time.Monday)
+	recurring.DayOfWeek = &monday
+	err := svc.UpdateSlot(ctx, recurring)
+	var verr *channels.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("UpdateSlot (moving recurring onto an existing one-off): got err %v, want a *channels.ValidationError", err)
+	}
+}
+
 func TestService_UpdateSlot_ExcludesItsOwnPriorStateFromValidation(t *testing.T) {
 	ctx := context.Background()
 	svc, channel, item := newServiceWithChannelAndMediaItem(t, 3600)

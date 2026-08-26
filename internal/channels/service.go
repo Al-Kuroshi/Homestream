@@ -116,7 +116,7 @@ func (s *Service) validateSlot(ctx context.Context, candidate *model.Slot, exclu
 		if total > dayLength {
 			return &ValidationError{Msg: "doesn't fit: this day is already full"}
 		}
-		return nil
+		return overlapsAnExistingOneOff(candidate, others, mediaByID)
 	}
 
 	if candidate.StartTime == nil {
@@ -135,6 +135,51 @@ func (s *Service) validateSlot(ctx context.Context, candidate *model.Slot, exclu
 	for _, r := range ResolveDate(others, mediaByID, start) {
 		if start.Before(r.EndTime()) && r.StartTime.Before(end) {
 			return &ValidationError{Msg: "doesn't fit: overlaps another slot"}
+		}
+	}
+	return nil
+}
+
+// overlapsAnExistingOneOff makes the recurring branch's validation symmetric
+// with the one-off branch's. Inserting into (or moving within) a weekday's
+// recurring chain reflows every slot after it, which can push the chain over
+// a one-off slot already booked on a concrete date that happens to fall on
+// that weekday. The one-off branch already resolves the full day before
+// checking overlap; without this, the exact same collision is accepted
+// whenever the user happens to place the recurring slot second.
+//
+// Only *existing* one-off slots are checkable — a hypothetical future one-off
+// that hasn't been created yet is neither knowable nor meaningful here.
+func overlapsAnExistingOneOff(candidate *model.Slot, others []*model.Slot, mediaByID map[int64]*model.MediaItem) error {
+	// The candidate's weekday chain as it would be after this placement.
+	// Deliberately recurring-only: resolving the one-off slots alongside it
+	// would let a pre-existing one-off/one-off overlap (which this
+	// placement didn't cause) reject an otherwise-fine recurring insert.
+	chain := make([]*model.Slot, 0, len(others)+1)
+	chain = append(chain, candidate)
+	for _, o := range others {
+		if o.Recurring {
+			chain = append(chain, o)
+		}
+	}
+
+	for _, o := range others {
+		if o.Recurring || o.StartTime == nil {
+			continue
+		}
+		start := o.StartTime.UTC()
+		if int(start.Weekday()) != *candidate.DayOfWeek {
+			continue
+		}
+		dur, ok := SlotDuration(o, mediaByID)
+		if !ok {
+			continue
+		}
+		end := start.Add(dur)
+		for _, r := range ResolveDate(chain, mediaByID, start) {
+			if start.Before(r.EndTime()) && r.StartTime.Before(end) {
+				return &ValidationError{Msg: "doesn't fit: overlaps a one-off slot already scheduled on " + start.Format("2006-01-02")}
+			}
 		}
 	}
 	return nil
