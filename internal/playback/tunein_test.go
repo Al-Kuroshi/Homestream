@@ -100,6 +100,21 @@ func (f *tuneInFixture) addProgram(t *testing.T, channelID, mediaItemID int64, s
 	}
 }
 
+// addRecurringSlot places a recurring weekly slot (same shape as
+// channels.TestService_CurrentState_ResolvesFromRecurringSlots) via the
+// same AddSlot service call addProgram above uses for one-off slots.
+func (f *tuneInFixture) addRecurringSlot(t *testing.T, channelID, mediaItemID int64, dayOfWeek, position int) {
+	t.Helper()
+	slot := &model.Slot{
+		ChannelID: channelID, Kind: model.SlotKindMedia,
+		MediaItemID: &mediaItemID, Recurring: true,
+		DayOfWeek: &dayOfWeek, Position: &position,
+	}
+	if err := f.channels.AddSlot(f.ctx, slot); err != nil {
+		t.Fatalf("adding recurring slot: %v", err)
+	}
+}
+
 func TestTuneIn_OffAirWhenNothingScheduled(t *testing.T) {
 	f := newTuneInFixture(t)
 	channel := f.addChannel(t)
@@ -203,5 +218,43 @@ func TestTuneIn_DoesNotJumpAheadToAFutureProgramWhenCurrentFileIsMissing(t *test
 	// function of (schedule, now), never advancing early.
 	if result.Status != "unavailable" {
 		t.Fatalf("expected status unavailable (not jumping ahead to a future program), got %+v", result)
+	}
+}
+
+// TestTuneIn_ResolvesRecurringSlot guards TuneIn's Pass B specifically for a
+// recurring slot: Pass B resolves the schedule via
+// channels.Service.ResolvedWindow rather than a raw, unresolved slot list,
+// and a recurring slot has no StartTime of its own — only ResolveDate (via
+// ResolvedWindow) can turn "recurring on Monday, position 1000" into a
+// concrete occurrence to evaluate "now" against. Without going through
+// ResolvedWindow, this case would never play anything (the schedule looks
+// resolvable per CurrentState/Pass A, but Pass B's file-existence filter
+// would have nothing to iterate). Uses a fixed synthetic "now" (like
+// channels.TestService_CurrentState_ResolvesFromRecurringSlots), since
+// TuneIn is a pure function of (schedule, now) and never touches the wall
+// clock itself.
+func TestTuneIn_ResolvesRecurringSlot(t *testing.T) {
+	f := newTuneInFixture(t)
+	generateTuneInTestVideo(t, f.mediaDir, "movie.mp4", 10)
+	item := f.addItem(t, "movie.mp4", 10, "h264", "aac", "mov,mp4,m4a,3gp,3g2,mj2")
+	channel := f.addChannel(t)
+
+	monday := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
+	dayOfWeek := int(monday.Weekday())
+	f.addRecurringSlot(t, channel.ID, item.ID, dayOfWeek, 1000)
+
+	now := monday.Add(3 * time.Second)
+	result, err := f.svc.TuneIn(f.ctx, channel.ID, now)
+	if err != nil {
+		t.Fatalf("TuneIn returned error: %v", err)
+	}
+	if result.Status != "playing" || result.Mode != "direct" {
+		t.Fatalf("expected playing/direct for a recurring slot resolved at %v, got %+v", now, result)
+	}
+	if result.MediaItemID != item.ID {
+		t.Errorf("expected media item %d, got %d", item.ID, result.MediaItemID)
+	}
+	if result.OffsetSec < 2.5 || result.OffsetSec > 4 {
+		t.Errorf("expected offset ~3s, got %v", result.OffsetSec)
 	}
 }
