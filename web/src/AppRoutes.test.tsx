@@ -76,4 +76,23 @@ describe("AppRoutes", () => {
     );
     expect(await screen.findByRole("heading", { name: "TV" })).toBeInTheDocument();
   });
+
+  it("renders the ChannelSchedule screen at /channels/:id", async () => {
+    server.use(
+      http.get("/api/channels/1", () =>
+        HttpResponse.json({ id: 1, name: "Movies", description: "", enabled: true, position: 0, created_at: "", updated_at: "" })
+      ),
+      http.get("/api/media", () => HttpResponse.json([])),
+      http.get("/api/channels/1/slots", () => HttpResponse.json([])),
+      http.get("/api/channels/1/slots/resolved", () => HttpResponse.json([]))
+    );
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <MemoryRouter initialEntries={["/channels/1"]}>
+          <AppRoutes />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    expect(await screen.findByRole("heading", { name: "Movies" })).toBeInTheDocument();
+  });
 });
