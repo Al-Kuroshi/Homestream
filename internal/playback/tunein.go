@@ -49,17 +49,19 @@ func (svc *Service) TuneIn(ctx context.Context, channelID int64, now time.Time) 
 		return &TuneInResult{Status: "off_air"}, nil
 	}
 
-	// Pass B: the same schedule, additionally excluding any program whose
-	// underlying file doesn't exist on disk right now.
-	programs, err := svc.channels.ListPrograms(ctx, channelID)
+	// Pass B: the same schedule (recurring + one-off slots resolved over a
+	// lookahead window, mirroring channels.Service.CurrentState's own
+	// lookaheadDays=7 plus one day of margin), additionally excluding any
+	// occurrence whose underlying file doesn't exist on disk right now.
+	resolved, err := svc.channels.ResolvedWindow(ctx, channelID, now, now.AddDate(0, 0, 8))
 	if err != nil {
 		return nil, err
 	}
 
-	playable := make([]scheduler.ScheduledProgram, 0, len(programs))
-	itemsByID := make(map[int64]*model.MediaItem, len(programs))
+	playable := make([]scheduler.ScheduledProgram, 0, len(resolved))
+	itemsByID := make(map[int64]*model.MediaItem, len(resolved))
 	sourcesByID := make(map[int64]*model.MediaSource)
-	for _, p := range programs {
+	for _, p := range resolved {
 		item, err := svc.items.Get(ctx, p.MediaItemID)
 		if errors.Is(err, repository.ErrNotFound) {
 			continue
@@ -88,12 +90,7 @@ func (svc *Service) TuneIn(ctx context.Context, channelID int64, now time.Time) 
 		}
 
 		itemsByID[item.ID] = item
-		playable = append(playable, scheduler.ScheduledProgram{
-			ProgramID:   p.ID,
-			MediaItemID: p.MediaItemID,
-			StartTime:   p.StartTime,
-			Duration:    time.Duration(item.DurationSec * float64(time.Second)),
-		})
+		playable = append(playable, p)
 	}
 
 	stateB := scheduler.Evaluate(playable, now)

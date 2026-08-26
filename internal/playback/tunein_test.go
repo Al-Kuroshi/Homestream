@@ -44,8 +44,8 @@ func newTuneInFixture(t *testing.T) *tuneInFixture {
 	sourceRepo := sqlite.NewMediaSourceRepository(conn)
 	itemRepo := sqlite.NewMediaItemRepository(conn)
 	channelRepo := sqlite.NewChannelRepository(conn)
-	programRepo := sqlite.NewProgramRepository(conn)
-	channelSvc := channels.NewService(channelRepo, programRepo, itemRepo)
+	slotRepo := sqlite.NewSlotRepository(conn)
+	channelSvc := channels.NewService(channelRepo, slotRepo, itemRepo)
 	sessions := playback.NewSessionManager(t.TempDir(), time.Minute)
 	t.Cleanup(func() { sessions.Close() })
 	svc := playback.NewService(channelSvc, sourceRepo, itemRepo, sessions)
@@ -91,8 +91,11 @@ func (f *tuneInFixture) addChannel(t *testing.T) *model.Channel {
 
 func (f *tuneInFixture) addProgram(t *testing.T, channelID, mediaItemID int64, startTime time.Time) {
 	t.Helper()
-	program := &model.Program{ChannelID: channelID, MediaItemID: mediaItemID, StartTime: startTime}
-	if err := f.channels.AddProgram(f.ctx, program); err != nil {
+	slot := &model.Slot{
+		ChannelID: channelID, Kind: model.SlotKindMedia,
+		MediaItemID: &mediaItemID, Recurring: false, StartTime: &startTime,
+	}
+	if err := f.channels.AddSlot(f.ctx, slot); err != nil {
 		t.Fatalf("adding program: %v", err)
 	}
 }
