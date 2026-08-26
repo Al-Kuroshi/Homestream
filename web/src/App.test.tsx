@@ -18,6 +18,6 @@ describe("App", () => {
       </QueryClientProvider>
     );
     expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Guide" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "TV" })).toBeInTheDocument();
   });
 });
