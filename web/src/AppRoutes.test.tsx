@@ -8,8 +8,11 @@ import { server } from "./test/server";
 import { AppRoutes } from "./AppRoutes";
 
 describe("AppRoutes", () => {
-  it("redirects / to the TV screen", async () => {
-    server.use(http.get("/api/channels", () => HttpResponse.json([])));
+  it("redirects / to the Guide screen", async () => {
+    server.use(
+      http.get("/api/channels", () => HttpResponse.json([])),
+      http.get("/api/media", () => HttpResponse.json([]))
+    );
     render(
       <QueryClientProvider client={createTestQueryClient()}>
         <MemoryRouter initialEntries={["/"]}>
@@ -17,7 +20,7 @@ describe("AppRoutes", () => {
         </MemoryRouter>
       </QueryClientProvider>
     );
-    expect(await screen.findByRole("heading", { name: "TV" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Guide" })).toBeInTheDocument();
   });
 
   it("renders the Library screen at /library", async () => {
