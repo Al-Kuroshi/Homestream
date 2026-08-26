@@ -12,6 +12,8 @@ The playback backend is also implemented: `internal/playback` (direct-play compa
 
 The fifth and final MVP frontend screen, **TV** (`web/src/screens/TVScreen.tsx` at `/tv/:channelId`, `TVIndexScreen.tsx` at `/tv`), is also implemented — the app's five screens (TV, Guide, Library, Channels, Settings) are all now built. It's an event-driven player (no polling loop — a single self-scheduled `setTimeout` per tune-in) consuming the playback endpoints above: `useTuneIn` (`web/src/api/playback.ts`) drives `VideoPlayer` (direct `<video>` playback, or `hls.js` for transcoded sessions), `Interstitial` (off-air/unavailable with a next-up countdown, never silently skipping ahead), `NowPlayingOverlay` (auto-hiding), and `ChannelSwitcher` (prev/next + a channel-list overlay). **No `<video>` element in this codebase has ever been exercised in a real browser** — the implementation environment had none available, so verification stopped at type-checking, jsdom-mocked component tests, and an API-level contract smoke test against the real Go binary. A manual browser pass is still owed before this is considered fully done (see `docs/PROGRESS.md`'s Next step).
 
+**Recurring weekly slot-chain scheduling is implemented** (design spec: `docs/design/2026-08-26-recurring-slot-scheduling-design.md`). The `Program` model is gone, replaced end to end by `Slot` — see "Core domain model" below for the mental model you need before touching scheduling code. On the frontend, `ChannelScheduleScreen` (`/channels/:id`) is a drag-and-drop weekly grid (drag media in from the library panel, drag existing slots to move them, drop a Gap/Break entry, toggle recurring vs one-off per placement, delete via each block's × button). **None of that drag-and-drop has been exercised in a real browser either** — same caveat as the TV screen below; a manual pass is owed (see `docs/PROGRESS.md`).
+
 Docker packaging is still not implemented — that remains a separate, not-yet-written plan (see `docs/plans/`). It should also address the frontend build's bundle-size warning (`hls.js` is statically imported, ~866KB/270KB gzip in the production JS bundle) if bundle size becomes a concern for the embedded-binary size.
 
 `ffmpeg`/`ffprobe` must be installed and on `PATH` to build the mental model of and to run this repo's tests (several tests generate short synthetic videos with `ffmpeg` and probe them with `ffprobe`).
@@ -97,13 +99,20 @@ Full requirements live in `docs/prd/HomeStreamer.md`. Read it before starting im
 The scheduling engine is the product's core differentiator and must stay independent of the UI:
 
 ```
-Channel → Schedule → Program → Media
+Channel → Slot (recurring or one-off) → resolution → Media
 ```
 
 - **Media** — a playable item (movie, episode, video) sourced from the user's local filesystem. Represented abstractly (`title`, `duration`, `type`, `source`, `metadata`) so the scheduler never depends on where media came from.
 - **Channel** — a virtual TV station with its own independent schedule; users create/rename/delete/enable/disable channels.
-- **Program** — an entry that will play on a channel, referencing media (or, in the future, a collection/playlist/rule). Its end time is derived from media duration.
-- **Schedule** — determines what plays on a channel and when. MVP supports sequential playlists only (explicit start times, end times computed from duration); rule-based/random/recurring scheduling is a future capability, not MVP. **Recurring weekly scheduling is now designed** (`docs/design/2026-08-26-recurring-slot-scheduling-design.md`), approved and awaiting an implementation plan — it replaces `Program`/absolute-`start_time`-only scheduling with a `Slot` model (recurring-by-default, day-of-week + position addressed; one-off slots keep today's absolute-`start_time` addressing) and a drag-and-drop weekly timeline. Until that plan lands, the codebase still matches the description above.
+- **Slot** (`model.Slot`, table `slots`) — the single scheduling primitive. There is no `Program` model any more; recurring weekly scheduling is **implemented**, not just designed (`docs/design/2026-08-26-recurring-slot-scheduling-design.md`). A slot is either:
+  - **recurring** (`recurring = true`): addressed by `day_of_week` (0 = Sunday, matching `time.Weekday()`/`Date.getUTCDay()`) plus a sparse integer `position`. It has no start time of its own — the day's recurring slots are walked in `position` order and their start times are computed by cumulative duration from that day's UTC midnight. Inserting or moving one therefore *reflows* every later slot on that weekday.
+  - **one-off** (`recurring = false`): addressed by an absolute `start_time`, as the old `Program` was.
+
+  Orthogonally, a slot's `kind` is either `media` (references a `media_item_id`; its duration is the item's duration) or `gap` (references no media at all; `gap_duration_sec` + `gap_label` describe a deliberate scheduled break). A gap resolves with `media_item_id` 0, so every consumer must branch on `kind` rather than trying to look the media up — see `resolvedSlotResponse`/`programStateJSON` and `joinResolvedSlotsWithMedia`.
+- **Resolution** — turning slots into concrete occurrences for a date or window. `channels.ResolveDate` resolves one UTC calendar day; `channels.Service.ResolvedWindow` walks a range of days and backs `GET /api/channels/{id}/slots/resolved`, which the Guide and the weekly grid both consume. Resolution feeds the unchanged `internal/scheduler`, which still evaluates a flat list of `scheduler.ScheduledProgram` against a wall-clock instant — so "what's on now" remains a pure function of `(schedule, now)` with nothing cached or ticking. Playback's `TuneIn` (`internal/playback/tunein.go`) resolves through `ResolvedWindow` too; anything that bypasses it silently cannot play recurring-slot content.
+- **All day/midnight/weekday arithmetic is UTC**, deliberately (an approved global constraint). The Guide and TV screens render clock *times* in the viewer's local timezone, so for a non-UTC viewer a slot can appear under a different day/time there than in the weekly grid. The grid labels itself "(all times UTC)"; see `docs/PROGRESS.md` for the accepted-limitation note.
+
+REST surface: `GET/POST /api/channels/{id}/slots`, `GET /api/channels/{id}/slots/resolved?from&to`, `GET/PUT/DELETE /api/slots/{id}`. `PUT` is a **full replace** — a partial body silently drops the fields it omits.
 
 At any point the system must be able to answer, per channel: what's playing now, when did it start/end, and what plays next (and after that).
 
@@ -116,7 +125,7 @@ Media Management → Scheduling → Channel State → Playback → API → Clien
 ```
 
 - Media source access should go through an abstraction (local filesystem is the only MVP source) so future sources (Plex, Jellyfin, network streams, etc.) can be added as adapters without touching the scheduler.
-- The API is the contract for the browser-based MVP client and any future clients (mobile, smart TV, desktop) — design endpoints for media sources, media items, channels, programs, schedules, and current playback/EPG state.
+- The API is the contract for the browser-based MVP client and any future clients (mobile, smart TV, desktop) — design endpoints for media sources, media items, channels, slots, resolved schedules, and current playback/EPG state.
 - Docker Compose is the intended local deployment method from the start.
 
 ## MVP scope discipline
