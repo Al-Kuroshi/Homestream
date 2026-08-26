@@ -41,11 +41,22 @@ type Channel struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-type Program struct {
-	ID          int64     `json:"id"`
-	ChannelID   int64     `json:"channel_id"`
-	MediaItemID int64     `json:"media_item_id"`
-	StartTime   time.Time `json:"start_time"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+const (
+	SlotKindMedia = "media"
+	SlotKindGap   = "gap"
+)
+
+type Slot struct {
+	ID             int64      `json:"id"`
+	ChannelID      int64      `json:"channel_id"`
+	Kind           string     `json:"kind"`
+	MediaItemID    *int64     `json:"media_item_id,omitempty"`
+	GapDurationSec *float64   `json:"gap_duration_sec,omitempty"`
+	GapLabel       string     `json:"gap_label"`
+	Recurring      bool       `json:"recurring"`
+	DayOfWeek      *int       `json:"day_of_week,omitempty"`
+	Position       *int       `json:"position,omitempty"`
+	StartTime      *time.Time `json:"start_time,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
