@@ -2833,7 +2833,7 @@ Add a type and state near the other hooks:
 
 ```ts
 type PendingPlacement =
-  | { kind: "media"; mediaItemId: number; dayOfWeek: number; date: Date; insertBeforeIndex: number; existingSlotId?: number }
+  | { kind: "media"; mediaItemId?: number; dayOfWeek: number; date: Date; insertBeforeIndex: number; existingSlotId?: number }
   | { kind: "gap"; dayOfWeek: number; date: Date; insertBeforeIndex: number; existingSlotId?: number };
 
 const [pending, setPending] = useState<PendingPlacement | null>(null);
@@ -2862,14 +2862,18 @@ Replace `handleDrop` with a version that only stages `pending` (no mutation yet)
     }
     const existing = slotsById.get(payload.existingSlotId);
     if (!existing) return;
-    setPending({
-      kind: existing.kind === "gap" ? "gap" : "media",
-      mediaItemId: existing.media_item_id ?? undefined,
-      dayOfWeek,
-      date,
-      insertBeforeIndex,
-      existingSlotId: existing.id,
-    } as PendingPlacement);
+    if (existing.kind === "gap") {
+      setPending({ kind: "gap", dayOfWeek, date, insertBeforeIndex, existingSlotId: existing.id });
+    } else {
+      setPending({
+        kind: "media",
+        mediaItemId: existing.media_item_id ?? undefined,
+        dayOfWeek,
+        date,
+        insertBeforeIndex,
+        existingSlotId: existing.id,
+      });
+    }
   }
 
   function computePosition(dayOfWeek: number, insertBeforeIndex: number, excludeSlotId?: number) {
