@@ -3,6 +3,7 @@ import type { MediaItem, ResolvedSlot } from "../api/types";
 export interface GuideProgram {
   programId: number;
   mediaItemId: number;
+  kind: "media" | "gap";
   title: string;
   start: Date;
   end: Date;
@@ -15,11 +16,16 @@ export type TimelineBlock =
 export function joinResolvedSlotsWithMedia(resolved: ResolvedSlot[], mediaById: Map<number, MediaItem>): GuideProgram[] {
   return resolved
     .map((r) => {
-      const item = mediaById.get(r.media_item_id);
+      // A gap has no media item at all (media_item_id is 0), so it must not
+      // go through the media lookup — that path's `Media #N` fallback would
+      // render a deliberate scheduled break as the literal text "Media #0".
+      const isGap = r.kind === "gap";
+      const item = isGap ? undefined : mediaById.get(r.media_item_id);
       return {
         programId: r.program_id,
         mediaItemId: r.media_item_id,
-        title: item?.title ?? `Media #${r.media_item_id}`,
+        kind: isGap ? ("gap" as const) : ("media" as const),
+        title: isGap ? r.gap_label || "Gap" : item?.title ?? `Media #${r.media_item_id}`,
         start: new Date(r.start_time),
         end: new Date(r.end_time),
       };

@@ -28,6 +28,8 @@ const RESOLVED: ResolvedSlot[] = [
   {
     program_id: 1,
     media_item_id: 5,
+    kind: "media",
+    gap_label: "",
     start_time: MONDAY_THIS_WEEK.toISOString(),
     end_time: new Date(MONDAY_THIS_WEEK.getTime() + MS_PER_HOUR).toISOString(),
   },
@@ -70,6 +72,14 @@ describe("ChannelScheduleScreen", () => {
     expect(await screen.findByText("Fury", { selector: ".media-library-item *, .media-library-item" })).toBeTruthy();
   });
 
+  // The grid's day/midnight boundaries are UTC while the Guide and TV
+  // screens render clock times locally — the label is what keeps a non-UTC
+  // viewer from silently seeing two different answers for the same slot.
+  it("labels the grid's times as UTC", async () => {
+    renderScreen();
+    expect(await screen.findByText("(all times UTC)")).toBeInTheDocument();
+  });
+
   it("renders a resolved slot as a block on its day, falling back to the media title (no cover art wired up yet)", async () => {
     renderScreen();
     const block = await screen.findByTestId("slot-block-1");
@@ -86,6 +96,8 @@ describe("ChannelScheduleScreen", () => {
         {
           program_id: 2,
           media_item_id: 0,
+          kind: "gap",
+          gap_label: "Ad Break",
           start_time: MONDAY_THIS_WEEK.toISOString(),
           end_time: new Date(MONDAY_THIS_WEEK.getTime() + 5 * 60 * 1000).toISOString(),
         },
@@ -119,6 +131,30 @@ describe("ChannelScheduleScreen", () => {
     await waitFor(() =>
       expect(capturedBody).toMatchObject({ kind: "media", media_item_id: 5, recurring: true, position: 1000 })
     );
+  });
+
+  // CSS :hover is not reliable during a native HTML5 drag, so the active
+  // state has to come from onDragEnter/onDragLeave.
+  it("highlights a drop zone while a drag is over it, and clears the highlight on leave", async () => {
+    renderScreen();
+    const zone = await screen.findByTestId("day-drop-zone-1-start");
+    expect(zone.className).not.toContain("day-drop-zone-active");
+
+    fireEvent.dragEnter(zone);
+    expect(zone.className).toContain("day-drop-zone-active");
+
+    fireEvent.dragLeave(zone);
+    expect(zone.className).not.toContain("day-drop-zone-active");
+  });
+
+  it("clears the drop-zone highlight once the drop happens", async () => {
+    renderScreen({ slots: [], resolved: [] });
+    const zone = (await screen.findAllByTestId(/day-drop-zone-/))[0];
+    fireEvent.dragEnter(zone);
+    expect(zone.className).toContain("day-drop-zone-active");
+
+    fireEvent.drop(zone, dragEventWithData({ mediaItemId: 5 }));
+    expect(zone.className).not.toContain("day-drop-zone-active");
   });
 
   it("shows an inline error when the backend rejects a placement", async () => {
@@ -187,6 +223,73 @@ describe("ChannelScheduleScreen", () => {
     fireEvent.click(screen.getByText("Add gap"));
 
     await waitFor(() => expect(capturedBody).toMatchObject({ kind: "gap", gap_duration_sec: 300, recurring: true, position: 1000 }));
+  });
+
+  // PUT /api/slots/{id} is a full replace, so a move that doesn't echo the
+  // gap's existing duration/label back silently rewrites them to the "new
+  // gap" defaults (5 minutes, "Gap").
+  it("preserves an existing gap's duration and label when it's moved", async () => {
+    const gapSlot: Slot = {
+      id: 2, channel_id: 1, kind: "gap", media_item_id: null, gap_duration_sec: 1800, gap_label: "Ad Break",
+      recurring: true, day_of_week: 1, position: 1000, start_time: null, created_at: "", updated_at: "",
+    };
+    renderScreen({
+      slots: [gapSlot],
+      resolved: [
+        {
+          program_id: 2,
+          media_item_id: 0,
+          kind: "gap",
+          gap_label: "Ad Break",
+          start_time: MONDAY_THIS_WEEK.toISOString(),
+          end_time: new Date(MONDAY_THIS_WEEK.getTime() + 30 * 60 * 1000).toISOString(),
+        },
+      ],
+    });
+    let capturedBody: Record<string, unknown> | undefined;
+    server.use(
+      http.put("/api/slots/2", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 2, ...capturedBody });
+      })
+    );
+
+    const block = await screen.findByTestId("slot-block-2");
+    const endZone = await screen.findByTestId("day-drop-zone-1-end");
+    fireEvent.dragStart(block, dragEventWithData({ existingSlotId: 2 }));
+    fireEvent.drop(endZone, dragEventWithData({ existingSlotId: 2 }));
+    // Confirm without touching the duration input at all.
+    fireEvent.click(await screen.findByText("Add gap"));
+
+    await waitFor(() =>
+      expect(capturedBody).toMatchObject({ kind: "gap", gap_duration_sec: 1800, gap_label: "Ad Break" })
+    );
+  });
+
+  it("deletes a slot when its × button is clicked", async () => {
+    renderScreen();
+    let deletedId: string | undefined;
+    server.use(
+      http.delete("/api/slots/:id", ({ params }) => {
+        deletedId = params.id as string;
+        return new HttpResponse(null, { status: 204 });
+      })
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Fury" }));
+
+    await waitFor(() => expect(deletedId).toBe("1"));
+  });
+
+  it("shows an inline error when deleting a slot fails", async () => {
+    renderScreen();
+    server.use(
+      http.delete("/api/slots/:id", () => HttpResponse.json({ error: "slot is gone" }, { status: 500 }))
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Fury" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("slot is gone");
   });
 
   it("unchecking Repeats weekly places a one-off slot with the dropped column's exact date instead of day_of_week/position", async () => {

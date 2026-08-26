@@ -7,9 +7,13 @@ export type WatchResponse =
   | { status: "off_air" }
   | { status: "unavailable" };
 
+// kind/gap_label mirror ResolvedSlot's, for the same reason: a gap
+// occurrence has media_item_id 0 and no media title to look up.
 export interface ProgramState {
   program_id: number;
   media_item_id: number;
+  kind: "media" | "gap";
+  gap_label: string;
   start_time: string;
   end_time: string;
 }
@@ -29,9 +33,11 @@ export function getChannelNow(channelId: number): Promise<NowResponse> {
   return apiGet<NowResponse>(`/channels/${channelId}/now`);
 }
 
-interface NextProgram {
+export interface NextProgram {
   mediaItemId: number;
   startTime: Date;
+  kind: "media" | "gap";
+  gapLabel: string;
 }
 
 export type TuneInState =
@@ -79,7 +85,12 @@ export function useTuneIn(channelId: number): { state: TuneInState; retune: () =
         if (myGeneration !== generationRef.current) return;
 
         const next: NextProgram | null = now.next
-          ? { mediaItemId: now.next.media_item_id, startTime: new Date(now.next.start_time) }
+          ? {
+              mediaItemId: now.next.media_item_id,
+              startTime: new Date(now.next.start_time),
+              kind: now.next.kind,
+              gapLabel: now.next.gap_label,
+            }
           : null;
 
         if (watch.status === "playing") {

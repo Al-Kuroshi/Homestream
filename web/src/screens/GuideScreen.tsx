@@ -109,9 +109,13 @@ function TimelineBlockView({ block, totalMs }: { block: TimelineBlock; totalMs: 
   if (block.type === "off-air") {
     return <div className="guide-block guide-block-offair" style={{ width: `${widthPercent}%` }}>Off Air</div>;
   }
+  // A gap is scheduled content (a deliberate break with its own label), not
+  // an absence of schedule — so it gets its own class rather than reusing
+  // either the program or the off-air style.
+  const kindClass = block.program.kind === "gap" ? "guide-block-gap" : "guide-block-program";
   return (
     <div
-      className="guide-block guide-block-program"
+      className={`guide-block ${kindClass}`}
       style={{ width: `${widthPercent}%` }}
       title={formatTimeRange(block.program.start, block.program.end)}
     >

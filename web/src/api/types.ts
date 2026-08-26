@@ -46,9 +46,14 @@ export interface Slot {
   updated_at: string;
 }
 
+// kind/gap_label are echoed from the originating Slot: a gap occurrence
+// resolves with media_item_id 0, so they're the only way to tell a
+// deliberate scheduled break from a broken media reference.
 export interface ResolvedSlot {
   program_id: number;
   media_item_id: number;
+  kind: "media" | "gap";
+  gap_label: string;
   start_time: string;
   end_time: string;
 }

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMediaItems } from "../api/media";
-import { useTuneIn } from "../api/playback";
+import { useTuneIn, type NextProgram } from "../api/playback";
+import type { MediaItem } from "../api/types";
 import { ChannelSwitcher } from "../components/ChannelSwitcher";
 import { Interstitial } from "../components/Interstitial";
 import { NowPlayingOverlay } from "../components/NowPlayingOverlay";
@@ -9,6 +10,15 @@ import { VideoPlayer } from "../components/VideoPlayer";
 import "./TVScreen.css";
 
 const LAST_CHANNEL_KEY = "personaltv.tv.lastChannelId";
+
+// What to call the next-up entry. A gap slot has no media item at all
+// (mediaItemId is 0), so the media lookup would always miss and render the
+// deliberate break as "Unknown" — its own label is the right name for it.
+function nextUpTitle(next: NextProgram | null, mediaById: Map<number, MediaItem>): string | null {
+  if (!next) return null;
+  if (next.kind === "gap") return next.gapLabel || "Gap";
+  return mediaById.get(next.mediaItemId)?.title ?? null;
+}
 
 export function TVScreen() {
   const params = useParams<{ channelId: string }>();
@@ -71,13 +81,13 @@ export function TVScreen() {
     // before: off_air/unavailable share one union member with a
     // two-literal discriminant, so checking `!== "playing"` is what lets
     // TS narrow it correctly in this branch.
-    const nextTitle = state.next ? mediaById.get(state.next.mediaItemId)?.title ?? null : null;
+    const nextTitle = nextUpTitle(state.next, mediaById);
     const next = state.next ? { title: nextTitle ?? "Unknown", startTime: state.next.startTime } : null;
     content = <Interstitial reason={state.status} next={next} />;
   } else {
     // state.status === "playing"
     const item = mediaById.get(state.mediaItemId);
-    const nextTitle = state.next ? mediaById.get(state.next.mediaItemId)?.title ?? null : null;
+    const nextTitle = nextUpTitle(state.next, mediaById);
     const src =
       state.mode === "direct"
         ? `/api/media/${state.mediaItemId}/stream`

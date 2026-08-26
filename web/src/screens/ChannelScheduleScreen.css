@@ -5,6 +5,11 @@
   margin: 12px 0;
 }
 
+.week-nav-timezone-note {
+  opacity: 0.7;
+  font-size: 0.85rem;
+}
+
 .schedule-layout {
   display: flex;
   gap: 16px;
@@ -56,10 +61,37 @@
 }
 
 .slot-block {
+  position: relative;
   padding: 4px 6px;
   font-size: 0.85rem;
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Parked in the block's top-right corner so it never covers the bulk of the
+   block's draggable surface — a drag started anywhere else still moves the
+   slot as before. */
+.slot-block-delete {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  line-height: 1;
+  font-size: 0.75rem;
+  color: inherit;
+  background: rgba(0, 0, 0, 0.35);
+  border: none;
+  border-radius: 3px;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.slot-block-delete:hover,
+.slot-block-delete:focus-visible {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.6);
 }
 
 .slot-block-media {
@@ -78,12 +110,25 @@
   display: block;
 }
 
+/* 24px, not 8px: this is the only place a slot can be dropped, and on a day
+   with several blocks an 8px strip is very hard to hit. */
 .day-drop-zone {
-  min-height: 8px;
+  min-height: 24px;
+  border-radius: 3px;
+  transition: background 80ms linear;
 }
 
 .day-drop-zone:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+/* Driven by onDragEnter/onDragLeave rather than CSS :hover, which most
+   browsers do not fire during a native HTML5 drag — so :hover alone leaves
+   a dragging user with no feedback at all about where they'd land. */
+.day-drop-zone-active {
+  background: rgba(90, 170, 255, 0.35);
+  outline: 2px dashed rgba(140, 200, 255, 0.9);
+  outline-offset: -2px;
 }
 
 .media-library-gap-item {

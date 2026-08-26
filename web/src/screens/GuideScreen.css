@@ -35,6 +35,14 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* A deliberate scheduled break: styled distinctly from both a program and
+   from off-air (which means "nothing scheduled at all"). Matches the
+   schedule grid's own .slot-block-gap treatment. */
+.guide-block-gap {
+  background: rgba(255, 196, 87, 0.12);
+  font-style: italic;
+}
+
 .guide-block-offair {
   background: transparent;
   opacity: 0.5;

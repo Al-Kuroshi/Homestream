@@ -3,7 +3,7 @@ import type { DragEvent } from "react";
 import { useParams } from "react-router-dom";
 import { useChannel } from "../api/channels";
 import { useMediaItems } from "../api/media";
-import { useAddSlot, useResolvedSlots, useSlotsForChannel, useUpdateSlot } from "../api/slots";
+import { useAddSlot, useDeleteSlot, useResolvedSlots, useSlotsForChannel, useUpdateSlot } from "../api/slots";
 import type { MediaItem } from "../api/types";
 import { MutationError } from "../components/MutationError";
 import { addWeeks, positionForInsert, slotsForDate, startOfWeekUTC, weekDates } from "../scheduling/week";
@@ -14,7 +14,14 @@ const MS_PER_HOUR = 60 * 60 * 1000;
 
 type PendingPlacement =
   | { kind: "media"; mediaItemId?: number; dayOfWeek: number; date: Date; insertBeforeIndex: number; existingSlotId?: number }
-  | { kind: "gap"; dayOfWeek: number; date: Date; insertBeforeIndex: number; existingSlotId?: number };
+  // gapLabel is carried on the pending placement (rather than re-derived at
+  // confirm time) because PUT /api/slots/{id} is a full replace: moving an
+  // existing gap has to send back the label it already had, not a fresh
+  // default, or the move silently renames it.
+  | { kind: "gap"; dayOfWeek: number; date: Date; insertBeforeIndex: number; existingSlotId?: number; gapLabel?: string };
+
+const DEFAULT_GAP_MINUTES = "5";
+const DEFAULT_GAP_LABEL = "Gap";
 
 // No cover-art metadata exists in the backend yet (deferred future work,
 // per the design spec) — always undefined, so every slot block below falls
@@ -56,10 +63,34 @@ export function ChannelScheduleScreen() {
 
   const addSlotMutation = useAddSlot(channelId);
   const updateSlotMutation = useUpdateSlot(channelId);
+  const deleteSlotMutation = useDeleteSlot(channelId);
 
   const [pending, setPending] = useState<PendingPlacement | null>(null);
   const [pendingRecurring, setPendingRecurring] = useState(true);
-  const [pendingGapMinutes, setPendingGapMinutes] = useState("5");
+  const [pendingGapMinutes, setPendingGapMinutes] = useState(DEFAULT_GAP_MINUTES);
+
+  // Which drop zone the pointer is currently over mid-drag. Tracked in state
+  // (fed by onDragEnter/onDragLeave) rather than left to CSS :hover, which
+  // most browsers suppress while a native HTML5 drag is in flight.
+  const [dragOverZoneId, setDragOverZoneId] = useState<string | null>(null);
+
+  // Everything a drop zone needs, in one place, so the "start of day" zone
+  // and the between-blocks zones can't drift apart.
+  function dropZoneProps(zoneId: string, dayOfWeek: number, date: Date, insertBeforeIndex: number) {
+    return {
+      className: dragOverZoneId === zoneId ? "day-drop-zone day-drop-zone-active" : "day-drop-zone",
+      "data-testid": zoneId,
+      onDragOver: (e: DragEvent) => e.preventDefault(),
+      onDragEnter: () => setDragOverZoneId(zoneId),
+      // Only clear if this zone is still the active one: if the pointer has
+      // already entered the next zone, that zone's enter must win.
+      onDragLeave: () => setDragOverZoneId((current) => (current === zoneId ? null : current)),
+      onDrop: (e: DragEvent) => {
+        setDragOverZoneId(null);
+        handleDrop(e, dayOfWeek, date, insertBeforeIndex);
+      },
+    };
+  }
 
   function handleDragStartMedia(e: DragEvent, mediaItemId: number) {
     e.dataTransfer.setData("application/json", JSON.stringify({ mediaItemId }));
@@ -78,6 +109,7 @@ export function ChannelScheduleScreen() {
 
     setPendingRecurring(true);
     if ("gap" in payload) {
+      setPendingGapMinutes(DEFAULT_GAP_MINUTES);
       setPending({ kind: "gap", dayOfWeek, date, insertBeforeIndex });
       return;
     }
@@ -88,7 +120,18 @@ export function ChannelScheduleScreen() {
     const existing = slotsById.get(payload.existingSlotId);
     if (!existing) return;
     if (existing.kind === "gap") {
-      setPending({ kind: "gap", dayOfWeek, date, insertBeforeIndex, existingSlotId: existing.id });
+      // Seed the form (and the pending placement) from what this gap
+      // already is, so a plain move round-trips its own duration/label
+      // instead of replacing them with whatever the last *new* gap used.
+      setPendingGapMinutes(existing.gap_duration_sec ? String(existing.gap_duration_sec / 60) : DEFAULT_GAP_MINUTES);
+      setPending({
+        kind: "gap",
+        dayOfWeek,
+        date,
+        insertBeforeIndex,
+        existingSlotId: existing.id,
+        gapLabel: existing.gap_label || DEFAULT_GAP_LABEL,
+      });
     } else {
       setPending({
         kind: "media",
@@ -129,7 +172,12 @@ export function ChannelScheduleScreen() {
     };
     const body =
       pending.kind === "gap"
-        ? { ...base, kind: "gap" as const, gap_duration_sec: Number(pendingGapMinutes) * 60, gap_label: "Gap" }
+        ? {
+            ...base,
+            kind: "gap" as const,
+            gap_duration_sec: Number(pendingGapMinutes) * 60,
+            gap_label: pending.gapLabel ?? DEFAULT_GAP_LABEL,
+          }
         : { ...base, kind: "media" as const, media_item_id: pending.mediaItemId! };
 
     if (pending.existingSlotId !== undefined) {
@@ -150,6 +198,13 @@ export function ChannelScheduleScreen() {
       <div className="week-nav">
         <button onClick={() => setWeekOffset((o) => o - 1)}>&lsaquo; Previous week</button>
         <span>{formatWeekBoundary(weekStart)} – {formatWeekBoundary(new Date(weekEnd.getTime() - 1))}</span>
+        {/* This grid's day columns and its midnight boundaries are computed
+            in UTC (an approved global constraint), while the Guide and TV
+            screens render clock times in the viewer's local timezone. For a
+            non-UTC viewer the same slot can therefore appear under a
+            different day/time on those screens — say so here rather than
+            leaving it to be discovered. */}
+        <span className="week-nav-timezone-note">(all times UTC)</span>
         <button onClick={() => setWeekOffset((o) => o + 1)}>Next week &rsaquo;</button>
       </div>
       <div className="schedule-layout">
@@ -178,6 +233,7 @@ export function ChannelScheduleScreen() {
         <div className="week-grid">
           <MutationError isError={addSlotMutation.isError} error={addSlotMutation.error} />
           <MutationError isError={updateSlotMutation.isError} error={updateSlotMutation.error} />
+          <MutationError isError={deleteSlotMutation.isError} error={deleteSlotMutation.error} />
           {pending && (
             <div className="pending-placement-form" role="dialog" aria-label="Confirm placement">
               <label>
@@ -213,12 +269,7 @@ export function ChannelScheduleScreen() {
                 <div className="day-column-header">
                   {DAY_LABELS[i]} {day.getUTCDate()}
                 </div>
-                <div
-                  className="day-drop-zone"
-                  data-testid={`day-drop-zone-${dayOfWeek}-start`}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => handleDrop(e, dayOfWeek, day, 0)}
-                />
+                <div {...dropZoneProps(`day-drop-zone-${dayOfWeek}-start`, dayOfWeek, day, 0)} />
                 {daySlots.map(({ slot, resolved: r }, index) => {
                   const heightPercent = ((new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / (24 * MS_PER_HOUR)) * 100;
                   const mediaItem = slot.kind === "media" ? mediaById.get(slot.media_item_id ?? -1) : undefined;
@@ -234,12 +285,33 @@ export function ChannelScheduleScreen() {
                         onDragStart={(e) => handleDragStartSlot(e, slot.id)}
                       >
                         {posterUrl ? <img className="slot-block-poster" src={posterUrl} alt={label} /> : <span>{label}</span>}
+                        {/* draggable={false} + stopPropagation keep this button
+                            from hijacking the parent block's own HTML5 drag:
+                            without them, a press-and-move that starts on the ×
+                            would begin (or abort) a slot move instead of
+                            behaving like an ordinary button. */}
+                        <button
+                          type="button"
+                          className="slot-block-delete"
+                          draggable={false}
+                          aria-label={`Delete ${label}`}
+                          title={`Delete ${label}`}
+                          onDragStart={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSlotMutation.mutate({ id: slot.id, channelId });
+                          }}
+                        >
+                          ×
+                        </button>
                       </div>
                       <div
-                        className="day-drop-zone"
-                        data-testid={`day-drop-zone-${dayOfWeek}-${index === daySlots.length - 1 ? "end" : index}`}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => handleDrop(e, dayOfWeek, day, index + 1)}
+                        {...dropZoneProps(
+                          `day-drop-zone-${dayOfWeek}-${index === daySlots.length - 1 ? "end" : index}`,
+                          dayOfWeek,
+                          day,
+                          index + 1
+                        )}
                       />
                     </div>
                   );

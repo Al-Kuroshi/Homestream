@@ -150,6 +150,43 @@ describe("TVScreen", () => {
     expect(await screen.findByText(/Up next: Movie B/)).toBeInTheDocument();
   });
 
+  // A gap slot has media_item_id 0 and no media item to look up, so without
+  // kind/gap_label the next-up line reads "Up next: Unknown" for a
+  // deliberately scheduled break.
+  it("names an upcoming gap slot by its gap_label instead of \"Unknown\"", async () => {
+    server.use(
+      http.post("/api/channels/1/watch", () => HttpResponse.json({ status: "off_air" })),
+      http.get("/api/channels/1/now", () =>
+        HttpResponse.json({
+          channel_id: 1,
+          current: null,
+          offset_sec: 0,
+          next: { program_id: 2, media_item_id: 0, kind: "gap", gap_label: "Ad Break", start_time: "2026-01-01T18:05:00Z", end_time: "2026-01-01T18:10:00Z" },
+        })
+      )
+    );
+    renderScreen();
+
+    expect(await screen.findByText(/Up next: Ad Break/)).toBeInTheDocument();
+  });
+
+  it("falls back to \"Gap\" for an upcoming unlabelled gap slot", async () => {
+    server.use(
+      http.post("/api/channels/1/watch", () => HttpResponse.json({ status: "off_air" })),
+      http.get("/api/channels/1/now", () =>
+        HttpResponse.json({
+          channel_id: 1,
+          current: null,
+          offset_sec: 0,
+          next: { program_id: 2, media_item_id: 0, kind: "gap", start_time: "2026-01-01T18:05:00Z", end_time: "2026-01-01T18:10:00Z" },
+        })
+      )
+    );
+    renderScreen();
+
+    expect(await screen.findByText(/Up next: Gap/)).toBeInTheDocument();
+  });
+
   it("shows the unavailable interstitial", async () => {
     server.use(
       http.post("/api/channels/1/watch", () => HttpResponse.json({ status: "unavailable" })),

@@ -6,7 +6,14 @@ const WINDOW_START = new Date("2026-01-01T17:00:00Z");
 const WINDOW_END = new Date("2026-01-01T23:00:00Z");
 
 function guideProgram(id: number, startIso: string, endIso: string) {
-  return { programId: id, mediaItemId: id, title: `Program ${id}`, start: new Date(startIso), end: new Date(endIso) };
+  return {
+    programId: id,
+    mediaItemId: id,
+    kind: "media" as const,
+    title: `Program ${id}`,
+    start: new Date(startIso),
+    end: new Date(endIso),
+  };
 }
 
 describe("buildTimeline", () => {
@@ -86,8 +93,8 @@ describe("joinResolvedSlotsWithMedia", () => {
   it("joins each resolved slot with its media title, sorted by start time", () => {
     const media = new Map([[1, mediaItem]]);
     const resolved: ResolvedSlot[] = [
-      { program_id: 2, media_item_id: 1, start_time: "2026-01-01T20:00:00Z", end_time: "2026-01-01T21:00:00Z" },
-      { program_id: 1, media_item_id: 1, start_time: "2026-01-01T18:00:00Z", end_time: "2026-01-01T19:00:00Z" },
+      { program_id: 2, media_item_id: 1, kind: "media", gap_label: "", start_time: "2026-01-01T20:00:00Z", end_time: "2026-01-01T21:00:00Z" },
+      { program_id: 1, media_item_id: 1, kind: "media", gap_label: "", start_time: "2026-01-01T18:00:00Z", end_time: "2026-01-01T19:00:00Z" },
     ];
     const joined = joinResolvedSlotsWithMedia(resolved, media);
     expect(joined.map((p) => p.programId)).toEqual([1, 2]);
@@ -100,10 +107,29 @@ describe("joinResolvedSlotsWithMedia", () => {
 
   it("falls back to a placeholder title when the media item is missing", () => {
     const resolved: ResolvedSlot[] = [
-      { program_id: 1, media_item_id: 99, start_time: "2026-01-01T18:00:00Z", end_time: "2026-01-01T19:00:00Z" },
+      { program_id: 1, media_item_id: 99, kind: "media", gap_label: "", start_time: "2026-01-01T18:00:00Z", end_time: "2026-01-01T19:00:00Z" },
     ];
     const joined = joinResolvedSlotsWithMedia(resolved, new Map());
     expect(joined[0].title).toBe("Media #99");
+  });
+
+  // A gap resolves with media_item_id 0, so the media-lookup path would
+  // title it "Media #0" — the label the user gave the break is the only
+  // correct name for it.
+  it("titles a gap slot from its gap_label instead of looking up media", () => {
+    const resolved: ResolvedSlot[] = [
+      { program_id: 1, media_item_id: 0, kind: "gap", gap_label: "Ad Break", start_time: "2026-01-01T18:00:00Z", end_time: "2026-01-01T18:05:00Z" },
+    ];
+    const joined = joinResolvedSlotsWithMedia(resolved, new Map());
+    expect(joined[0].title).toBe("Ad Break");
+    expect(joined[0].kind).toBe("gap");
+  });
+
+  it("titles an unlabelled gap slot \"Gap\"", () => {
+    const resolved: ResolvedSlot[] = [
+      { program_id: 1, media_item_id: 0, kind: "gap", gap_label: "", start_time: "2026-01-01T18:00:00Z", end_time: "2026-01-01T18:05:00Z" },
+    ];
+    expect(joinResolvedSlotsWithMedia(resolved, new Map())[0].title).toBe("Gap");
   });
 });
 
