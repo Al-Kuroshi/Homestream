@@ -53,6 +53,29 @@ describe("positionForInsert", () => {
   it("returns the midpoint when inserting between two slots", () => {
     expect(positionForInsert([1000, 3000], 1)).toBe(2000);
   });
+
+  // The API's `position` is a Go *int: a fractional value fails JSON
+  // decoding and surfaces the raw Go decoder error to the user.
+  it("always returns an integer, including after repeated same-boundary inserts", () => {
+    let positions = [1000, 2000];
+    for (let i = 0; i < 12; i++) {
+      const next = positionForInsert(positions, 1);
+      expect(Number.isInteger(next)).toBe(true);
+      positions = [...positions, next].sort((a, b) => a - b);
+    }
+  });
+
+  it("rounds an odd midpoint rather than returning a fraction", () => {
+    expect(positionForInsert([1000, 1003], 1)).toBe(1002);
+  });
+
+  it("returns an integer (not a collision-free midpoint) when the neighbours are adjacent", () => {
+    // No integer exists strictly between 1000 and 1001; the result must
+    // still be a whole number rather than 1000.5.
+    const got = positionForInsert([1000, 1001], 1);
+    expect(Number.isInteger(got)).toBe(true);
+    expect(got).toBe(1001);
+  });
 });
 
 describe("slotsForDate", () => {
@@ -62,8 +85,8 @@ describe("slotsForDate", () => {
     created_at: "", updated_at: "",
   };
   const resolved: ResolvedSlot[] = [
-    { program_id: 1, media_item_id: 5, start_time: "2026-08-31T00:00:00Z", end_time: "2026-08-31T01:00:00Z" },
-    { program_id: 2, media_item_id: 5, start_time: "2026-09-01T00:00:00Z", end_time: "2026-09-01T01:00:00Z" },
+    { program_id: 1, media_item_id: 5, kind: "media", gap_label: "", start_time: "2026-08-31T00:00:00Z", end_time: "2026-08-31T01:00:00Z" },
+    { program_id: 2, media_item_id: 5, kind: "media", gap_label: "", start_time: "2026-09-01T00:00:00Z", end_time: "2026-09-01T01:00:00Z" },
   ];
 
   it("returns only the occurrences whose start falls on the given UTC date, sorted by start time", () => {

@@ -24,12 +24,31 @@ export function addWeeks(date: Date, weeks: number): Date {
 // caller will render them). Mirrors the backend's own sparse-position
 // convention (increments of 1000) so most inserts never need to renumber
 // sibling slots.
+// The result is ALWAYS an integer. The API's `position` is a Go `*int`, so a
+// fractional value (which repeated midpoint inserts at the same boundary
+// produce: 1500 -> 1250 -> 1125 -> 1062.5) fails JSON decoding server-side
+// and surfaces the raw Go decoder error to the user in the mutation-error
+// banner.
 export function positionForInsert(existingPositions: number[], insertBeforeIndex: number): number {
   const sorted = [...existingPositions].sort((a, b) => a - b);
   if (sorted.length === 0) return 1000;
-  if (insertBeforeIndex <= 0) return sorted[0] - 1000;
-  if (insertBeforeIndex >= sorted.length) return sorted[sorted.length - 1] + 1000;
-  return (sorted[insertBeforeIndex - 1] + sorted[insertBeforeIndex]) / 2;
+  if (insertBeforeIndex <= 0) return Math.round(sorted[0]) - 1000;
+  if (insertBeforeIndex >= sorted.length) return Math.round(sorted[sorted.length - 1]) + 1000;
+
+  const before = sorted[insertBeforeIndex - 1];
+  const after = sorted[insertBeforeIndex];
+  const midpoint = Math.round((before + after) / 2);
+  if (midpoint > before && midpoint < after) return midpoint;
+
+  // Rounding collapsed onto a neighbour, which can only happen when the two
+  // neighbours are adjacent integers (or duplicates) — there is simply no
+  // integer strictly between them to nudge to. Positions start 1000 apart,
+  // so reaching this needs ~10 inserts at the exact same boundary. Tying
+  // with the following slot's position is harmless rather than a failure:
+  // the backend only sorts by position, so the slot lands next to where it
+  // was dropped and the user can re-drag it. A full renumbering pass to
+  // reopen space is deliberately out of scope.
+  return Math.round(after);
 }
 
 export interface DaySlotBlock {
