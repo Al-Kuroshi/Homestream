@@ -49,6 +49,19 @@ func (svc *Service) TuneIn(ctx context.Context, channelID int64, now time.Time) 
 		return &TuneInResult{Status: "off_air"}, nil
 	}
 
+	// A gap slot is a deliberate, correctly-scheduled break — it has no
+	// media item at all (MediaItemID 0), so Pass B's media lookup below
+	// would drop it and report "unavailable", i.e. an error state, for
+	// something that is working exactly as scheduled. Report it as off-air
+	// instead, reusing the existing interstitial + next-up countdown path.
+	kindBySlotID, err := svc.slotKinds(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	if kindBySlotID[stateA.Current.ProgramID] == model.SlotKindGap {
+		return &TuneInResult{Status: "off_air"}, nil
+	}
+
 	// Pass B: the same schedule (recurring + one-off slots resolved over a
 	// lookahead window, mirroring channels.Service.CurrentState's own
 	// lookaheadDays=7 plus one day of margin), additionally excluding any
@@ -119,4 +132,19 @@ func (svc *Service) TuneIn(ctx context.Context, channelID int64, now time.Time) 
 		Status: "playing", Mode: "hls",
 		MediaItemID: item.ID, OffsetSec: offsetSec, SessionID: sess.ID,
 	}, nil
+}
+
+// slotKinds maps a channel's slot IDs to their kind. A resolved occurrence
+// carries its originating slot's ID in ProgramID, which is the only handle
+// TuneIn has for asking "is what's on right now a gap?".
+func (svc *Service) slotKinds(ctx context.Context, channelID int64) (map[int64]string, error) {
+	slots, err := svc.channels.ListSlots(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	kinds := make(map[int64]string, len(slots))
+	for _, slot := range slots {
+		kinds[slot.ID] = slot.Kind
+	}
+	return kinds, nil
 }

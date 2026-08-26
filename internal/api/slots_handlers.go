@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -143,9 +144,16 @@ func writeSlotError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusInternalServerError, err)
 }
 
+// resolvedSlotResponse carries Kind/GapLabel alongside the resolved times so
+// a client can tell a deliberate gap/break apart from a media occurrence.
+// Without them a gap resolves to MediaItemID 0, which every consumer would
+// otherwise render as a broken media lookup ("Media #0") rather than the
+// scheduled break it actually is.
 type resolvedSlotResponse struct {
 	ProgramID   int64     `json:"program_id"`
 	MediaItemID int64     `json:"media_item_id"`
+	Kind        string    `json:"kind"`
+	GapLabel    string    `json:"gap_label,omitempty"`
 	StartTime   time.Time `json:"start_time"`
 	EndTime     time.Time `json:"end_time"`
 }
@@ -175,9 +183,34 @@ func (s *Server) handleResolvedSlots(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	slotByID, err := s.slotsByID(r.Context(), channelID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 	out := make([]resolvedSlotResponse, 0, len(resolved))
 	for _, p := range resolved {
-		out = append(out, resolvedSlotResponse{ProgramID: p.ProgramID, MediaItemID: p.MediaItemID, StartTime: p.StartTime, EndTime: p.EndTime()})
+		item := resolvedSlotResponse{ProgramID: p.ProgramID, MediaItemID: p.MediaItemID, StartTime: p.StartTime, EndTime: p.EndTime()}
+		if slot, ok := slotByID[p.ProgramID]; ok {
+			item.Kind = slot.Kind
+			item.GapLabel = slot.GapLabel
+		}
+		out = append(out, item)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// slotsByID indexes a channel's slots by ID. A resolved occurrence only
+// carries its originating slot's ID (as ProgramID), so this is how a handler
+// joins back to the slot's kind/gap_label.
+func (s *Server) slotsByID(ctx context.Context, channelID int64) (map[int64]*model.Slot, error) {
+	slots, err := s.channels.ListSlots(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]*model.Slot, len(slots))
+	for _, slot := range slots {
+		byID[slot.ID] = slot
+	}
+	return byID, nil
 }

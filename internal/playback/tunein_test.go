@@ -115,6 +115,21 @@ func (f *tuneInFixture) addRecurringSlot(t *testing.T, channelID, mediaItemID in
 	}
 }
 
+// addGapSlot places a recurring gap/break slot — the deliberate-silence
+// counterpart to addRecurringSlot, seeded through the same AddSlot service
+// call so it goes through real validation.
+func (f *tuneInFixture) addGapSlot(t *testing.T, channelID int64, durationSec float64, label string, dayOfWeek, position int) {
+	t.Helper()
+	slot := &model.Slot{
+		ChannelID: channelID, Kind: model.SlotKindGap,
+		GapDurationSec: &durationSec, GapLabel: label, Recurring: true,
+		DayOfWeek: &dayOfWeek, Position: &position,
+	}
+	if err := f.channels.AddSlot(f.ctx, slot); err != nil {
+		t.Fatalf("adding gap slot: %v", err)
+	}
+}
+
 func TestTuneIn_OffAirWhenNothingScheduled(t *testing.T) {
 	f := newTuneInFixture(t)
 	channel := f.addChannel(t)
@@ -256,5 +271,52 @@ func TestTuneIn_ResolvesRecurringSlot(t *testing.T) {
 	}
 	if result.OffsetSec < 2.5 || result.OffsetSec > 4 {
 		t.Errorf("expected offset ~3s, got %v", result.OffsetSec)
+	}
+}
+
+// A gap slot is a deliberate, correctly-scheduled break, not a fault: it has
+// no media item at all, so Pass B's media lookup would drop it and report
+// "unavailable" (the error state, which the UI renders as "Currently
+// unavailable"). It must report off_air instead — the same interstitial +
+// next-up countdown a viewer sees for any other scheduled silence.
+func TestTuneIn_OffAirWhileAGapSlotIsOnAir(t *testing.T) {
+	f := newTuneInFixture(t)
+	channel := f.addChannel(t)
+
+	monday := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
+	dayOfWeek := int(monday.Weekday())
+	f.addGapSlot(t, channel.ID, 600, "Ad Break", dayOfWeek, 1000)
+
+	now := monday.Add(30 * time.Second)
+	result, err := f.svc.TuneIn(f.ctx, channel.ID, now)
+	if err != nil {
+		t.Fatalf("TuneIn returned error: %v", err)
+	}
+	if result.Status != "off_air" {
+		t.Fatalf("expected status off_air for a scheduled gap, got %+v", result)
+	}
+}
+
+// The gap must not poison the rest of the chain: once it ends, the media
+// slot that follows it plays normally.
+func TestTuneIn_PlaysTheMediaSlotFollowingAGap(t *testing.T) {
+	f := newTuneInFixture(t)
+	generateTuneInTestVideo(t, f.mediaDir, "movie.mp4", 10)
+	item := f.addItem(t, "movie.mp4", 10, "h264", "aac", "mov,mp4,m4a,3gp,3g2,mj2")
+	channel := f.addChannel(t)
+
+	monday := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
+	dayOfWeek := int(monday.Weekday())
+	f.addGapSlot(t, channel.ID, 600, "Ad Break", dayOfWeek, 1000)
+	f.addRecurringSlot(t, channel.ID, item.ID, dayOfWeek, 2000)
+
+	// 3s past the gap's 10-minute end, i.e. 3s into the media slot.
+	now := monday.Add(10*time.Minute + 3*time.Second)
+	result, err := f.svc.TuneIn(f.ctx, channel.ID, now)
+	if err != nil {
+		t.Fatalf("TuneIn returned error: %v", err)
+	}
+	if result.Status != "playing" || result.MediaItemID != item.ID {
+		t.Fatalf("expected the post-gap media slot to play, got %+v", result)
 	}
 }

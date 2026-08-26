@@ -117,4 +117,53 @@ func TestHandleResolvedSlots(t *testing.T) {
 	if len(resolved) != 1 {
 		t.Fatalf("got %d resolved slots, want 1", len(resolved))
 	}
+	if resolved[0]["kind"] != "media" {
+		t.Errorf("got kind %v, want media", resolved[0]["kind"])
+	}
+}
+
+// A gap slot resolves with media_item_id 0, so kind/gap_label are the only
+// way a client can tell "deliberate scheduled break" from "broken media
+// reference" — without them the Guide renders a gap as literally "Media #0".
+func TestHandleResolvedSlots_CarriesGapKindAndLabel(t *testing.T) {
+	conn := db.OpenTest(t)
+	channel, _ := seedChannelAndMediaItem(t, conn)
+	srv, _ := newTestServerWithConn(t, conn)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	addBody, _ := json.Marshal(map[string]any{
+		"kind": "gap", "gap_duration_sec": 300, "gap_label": "Ad Break",
+		"recurring": true, "day_of_week": 1, "position": 1000,
+	})
+	addResp, err := http.Post(ts.URL+"/api/channels/"+strconv.FormatInt(channel.ID, 10)+"/slots", "application/json", bytes.NewReader(addBody))
+	if err != nil {
+		t.Fatalf("setup POST failed: %v", err)
+	}
+	addResp.Body.Close()
+	if addResp.StatusCode != http.StatusCreated {
+		t.Fatalf("setup: got status %d", addResp.StatusCode)
+	}
+
+	from := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 0, 7)
+	url := ts.URL + "/api/channels/" + strconv.FormatInt(channel.ID, 10) + "/slots/resolved?from=" + from.Format(time.RFC3339) + "&to=" + to.Format(time.RFC3339)
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer resp.Body.Close()
+	var resolved []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&resolved); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(resolved) != 1 {
+		t.Fatalf("got %d resolved slots, want 1", len(resolved))
+	}
+	if resolved[0]["kind"] != "gap" {
+		t.Errorf("got kind %v, want gap", resolved[0]["kind"])
+	}
+	if resolved[0]["gap_label"] != "Ad Break" {
+		t.Errorf("got gap_label %v, want \"Ad Break\"", resolved[0]["gap_label"])
+	}
 }
