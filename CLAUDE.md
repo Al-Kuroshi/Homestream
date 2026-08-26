@@ -103,7 +103,7 @@ Channel → Schedule → Program → Media
 - **Media** — a playable item (movie, episode, video) sourced from the user's local filesystem. Represented abstractly (`title`, `duration`, `type`, `source`, `metadata`) so the scheduler never depends on where media came from.
 - **Channel** — a virtual TV station with its own independent schedule; users create/rename/delete/enable/disable channels.
 - **Program** — an entry that will play on a channel, referencing media (or, in the future, a collection/playlist/rule). Its end time is derived from media duration.
-- **Schedule** — determines what plays on a channel and when. MVP supports sequential playlists only (explicit start times, end times computed from duration); rule-based/random/recurring scheduling is a future capability, not MVP.
+- **Schedule** — determines what plays on a channel and when. MVP supports sequential playlists only (explicit start times, end times computed from duration); rule-based/random/recurring scheduling is a future capability, not MVP. **Recurring weekly scheduling is now designed** (`docs/design/2026-08-26-recurring-slot-scheduling-design.md`), approved and awaiting an implementation plan — it replaces `Program`/absolute-`start_time`-only scheduling with a `Slot` model (recurring-by-default, day-of-week + position addressed; one-off slots keep today's absolute-`start_time` addressing) and a drag-and-drop weekly timeline. Until that plan lands, the codebase still matches the description above.
 
 At any point the system must be able to answer, per channel: what's playing now, when did it start/end, and what plays next (and after that).
 

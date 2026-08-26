@@ -77,6 +77,7 @@ A sortable, searchable **text table** (title, duration, source, video codec, aud
 - **Edit a program's start time:** `PUT /api/programs/{id}`.
 - **Reordering / gaps:** ordering is implicit in each program's `start_time`, not a separate position field — the list is simply sorted by start time (matching `ProgramRepository.ListByChannel`'s existing `ORDER BY start_time`). The start-time input is free-form: nothing forces or suggests contiguous back-to-back scheduling, so a gap (off-air period) is just "the next program's start time is later than the previous program's end time" — no special UI affordance is needed to create one, it falls out naturally from free-form start times.
 - **Not built in this plan:** drag-and-drop reordering (chosen against during brainstorming in favor of the simpler add/remove/edit-start-time list — drag-drop could be added later as a pure UI enhancement without changing the underlying data flow, since ordering is already purely derived from `start_time`).
+- **Superseded:** the assumption that drag-and-drop is "a pure UI enhancement without changing the underlying data flow" turned out to be wrong once recurring scheduling entered scope — see `docs/design/2026-08-26-recurring-slot-scheduling-design.md`, which replaces this whole schedule-editor section (`Program`/`start_time`-only model, dropdown-based add form) with a recurring slot-chain model and a drag-and-drop weekly timeline. This section is kept for history; follow the newer spec for anything scheduling-related.
 
 ### 4.4 Settings
 
@@ -105,7 +106,7 @@ Vitest + React Testing Library, test-first, matching the backend's TDD disciplin
 
 - TV / video player screen (blocked on playback backend — see §1)
 - Thumbnail/poster art for media items (no backend support; Media Library's table leaves room for it later)
-- Drag-and-drop schedule reordering (deferred enhancement — see §4.3)
+- Drag-and-drop schedule reordering (deferred enhancement — see §4.3; now designed in `docs/design/2026-08-26-recurring-slot-scheduling-design.md`, which supersedes §4.3's schedule editor)
 - Any playback/application/system settings (nothing to configure yet — see §4.4)
 - Any new backend API endpoints (this plan is buildable entirely against the existing REST API)
 - Authentication (explicit MVP non-goal per the PRD)

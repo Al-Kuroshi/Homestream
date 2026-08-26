@@ -92,6 +92,8 @@ Anime        Episode 1   Episode 2   Movie
 
 None of the following are required for the MVP, but the architecture should not preclude them: recurring programs ("every day at 20:00 → Movie"), random selection ("21:00 → random movie from Action"), collection-based picks ("22:00 → random episode from Comedy Shows"), rotation rules ("don't repeat the same movie within 30 days"), time-of-day programming blocks (e.g. Kids in the morning, Movies at night), and special one-off events ("Friday 21:00 → Movie Night").
 
+**Recurring programs now have a concrete design:** `docs/design/2026-08-26-recurring-slot-scheduling-design.md` scopes weekly-recurring, duration-sized slot scheduling (approved, not yet implemented). TV-series/episode auto-advance and YouTube-sourced slots are explicitly deferred further, as their own future specs, within that same document.
+
 ## 8. Storage Models
 
 Three storage models exist across the product's lifetime, only the first of which is in scope for the MVP:

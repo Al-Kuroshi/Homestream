@@ -11,6 +11,7 @@ This file exists so a new session (human or Claude Code) can pick up where the l
 - **Technical design spec (frontend):** `docs/design/2026-08-23-personal-tv-frontend-foundation-design.md`
 - **Technical design spec (playback):** `docs/design/2026-08-23-personal-tv-playback-design.md`.
 - **Technical design spec (TV/player screen):** `docs/design/2026-08-24-personal-tv-player-design.md`.
+- **Technical design spec (recurring slot-chain scheduling & drag-and-drop timeline):** `docs/design/2026-08-26-recurring-slot-scheduling-design.md` — approved, no implementation plan yet. Supersedes the scheduling parts of the frontend design spec (`Program`/absolute-`start_time`-only model, dropdown schedule editor).
 - **Implementation plan (Plan 1 — Core Backend):** `docs/plans/2026-08-21-personal-tv-core-backend.md` — merged.
 - **Implementation plan (Plan 2 — Frontend Foundation):** `docs/plans/2026-08-23-personal-tv-frontend-foundation.md` — merged.
 - **Implementation plan (Plan 3 — Playback Backend):** `docs/plans/2026-08-23-personal-tv-playback-backend.md` — merged.
@@ -51,6 +52,8 @@ All 6 tasks passed individual spec+quality review (Task 6 needed one fix round f
 
 ## Next step
 
+**Recurring slot-chain scheduling design is approved, no implementation plan yet:** `docs/design/2026-08-26-recurring-slot-scheduling-design.md` — a real domain-model change (`Program` → `Slot`, recurring-by-default with day-of-week addressing, gap/break slots, a resolution step feeding the unchanged `scheduler.Evaluate`) plus a new drag-and-drop weekly timeline UI replacing the Channels screen's dropdown-based schedule editor. Run `superpowers:writing-plans` against it when ready to pick this up. Known-missing overlap validation in the current schedule editor (see the "no overlap warning" item below) is addressed by this spec's design, not by a separate smaller fix.
+
 **A human should do a manual browser pass on the TV screen before/alongside the next plan** — this is the one thing no subagent in this environment could verify. Build and run (`cd web && npm run build && cd .. && go run ./cmd/personaltv`), then in a real browser check: (1) a direct-play channel actually plays and starts at the right offset; (2) an hls-mode channel (a non-h264/aac/mp4 file) attaches `hls.js` and its segments actually load; (3) the tap-to-play button appears if autoplay is blocked; (4) prev/next channel switching visually works; (5) the now-playing overlay auto-hides and re-shows on mouse movement.
 
 **Decide how the `worktree-tv-player-screen` branch lands** — run `superpowers:finishing-a-development-branch` from that branch (or merge it, per your normal workflow, then continue from `main`).
@@ -64,7 +67,7 @@ Minor, non-blocking items parked during the frontend's final review (fine to pic
 ## Key decisions made (see the design specs for full reasoning)
 
 - **Backend:** Go, single static binary, `modernc.org/sqlite` (pure-Go, no CGO).
-- **Frontend:** React + TypeScript SPA (Vite), embedded into the Go binary via `go:embed`. Plain CSS (no UI framework), React Router, TanStack Query, Vitest/RTL/MSW for testing. See the frontend design spec for the full rationale (persistent sidebar nav, timeline-grid Guide over a simpler now/next list, no drag-and-drop scheduling, Settings scoped to media sources only).
+- **Frontend:** React + TypeScript SPA (Vite), embedded into the Go binary via `go:embed`. Plain CSS (no UI framework), React Router, TanStack Query, Vitest/RTL/MSW for testing. See the frontend design spec for the full rationale (persistent sidebar nav, timeline-grid Guide over a simpler now/next list, Settings scoped to media sources only). Its "no drag-and-drop scheduling" decision is now superseded — see the recurring slot-chain scheduling design spec below.
 - **Database:** SQLite behind repository interfaces, swappable to PostgreSQL later without touching business logic.
 - **Media source (MVP):** local filesystem only, including NAS/network shares via a Docker bind mount.
 - **Metadata/subtitles:** no internet enrichment in MVP — filename + `ffprobe` technical metadata only.

@@ -34,7 +34,7 @@ Title/descriptive metadata beyond what can be derived from the filename is out o
 
 ### 4.2 `channels`
 
-CRUD for channels, schedules, and programs. A channel has a name, description, optional artwork, an enabled/disabled flag, and an ordered position. A schedule is an ordered sequence of programs, each referencing a `MediaItem` with an explicit start time; end time is derived, not stored, since it's always computable from start time + media duration.
+CRUD for channels, schedules, and programs. A channel has a name, description, optional artwork, an enabled/disabled flag, and an ordered position. A schedule is an ordered sequence of programs, each referencing a `MediaItem` with an explicit start time; end time is derived, not stored, since it's always computable from start time + media duration. **This "explicit start time" model is being superseded** by `docs/design/2026-08-26-recurring-slot-scheduling-design.md` (approved, not yet implemented) — recurring slots are addressed by day-of-week + position instead, with clock time computed rather than stored; one-off slots keep an explicit start time as described here.
 
 ### 4.3 `scheduler`
 
