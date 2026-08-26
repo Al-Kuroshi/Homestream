@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -97,11 +97,14 @@ describe("ChannelScheduleScreen", () => {
 
   it("drops a media item from the library panel onto an empty day, adding a recurring slot at position 1000", async () => {
     renderScreen({ slots: [], resolved: [] });
+    // Captured rather than asserted inline in the handler — see the "moves
+    // an existing slot" test below for why an inline expect() here would
+    // never actually gate the test's pass/fail.
+    let capturedBody: Record<string, unknown> | undefined;
     server.use(
       http.post("/api/channels/1/slots", async ({ request }) => {
-        const body = (await request.json()) as Record<string, unknown>;
-        expect(body).toMatchObject({ kind: "media", media_item_id: 5, recurring: true, position: 1000 });
-        return HttpResponse.json({ id: 9, ...body }, { status: 201 });
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 9, ...capturedBody }, { status: 201 });
       })
     );
 
@@ -109,6 +112,10 @@ describe("ChannelScheduleScreen", () => {
     const dropZone = (await screen.findAllByTestId(/day-drop-zone-/))[0];
     fireEvent.dragStart(mediaItem, dragEventWithData({ mediaItemId: 5 }));
     fireEvent.drop(dropZone, dragEventWithData({ mediaItemId: 5 }));
+
+    await waitFor(() =>
+      expect(capturedBody).toMatchObject({ kind: "media", media_item_id: 5, recurring: true, position: 1000 })
+    );
   });
 
   it("shows an inline error when the backend rejects a placement", async () => {
@@ -127,11 +134,17 @@ describe("ChannelScheduleScreen", () => {
 
   it("moves an existing slot when it's dragged to a different drop zone", async () => {
     renderScreen(); // defaults: SLOTS has id=1 (day_of_week: 1, position: 1000), RESOLVED has a matching occurrence on MONDAY_THIS_WEEK
+    // Captured (rather than asserted inline in the handler) so the test can
+    // `await waitFor` on it below — an `expect()` thrown inside an MSW
+    // handler that nothing ever awaits doesn't fail the test; it's a
+    // rejected promise the test has already returned past. Confirmed by
+    // temporarily asserting an impossible value here and observing the
+    // test still reported green.
+    let capturedBody: Record<string, unknown> | undefined;
     server.use(
       http.put("/api/slots/1", async ({ request }) => {
-        const body = (await request.json()) as Record<string, unknown>;
-        expect(body).toMatchObject({ recurring: true, position: 2000 });
-        return HttpResponse.json({ id: 1, ...body });
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 1, ...capturedBody });
       })
     );
 
@@ -139,5 +152,14 @@ describe("ChannelScheduleScreen", () => {
     const endZone = await screen.findByTestId("day-drop-zone-1-end");
     fireEvent.dragStart(block, dragEventWithData({ existingSlotId: 1 }));
     fireEvent.drop(endZone, dragEventWithData({ existingSlotId: 1 }));
+
+    // position 1000, not 2000: handleDrop's existingPositions excludes the
+    // dragged slot's own id from the target day before calling
+    // positionForInsert (correctly — a slot's new position shouldn't be
+    // computed relative to its own old position). Since slot 1 is this
+    // day's only occupant, excluding it leaves existingPositions empty, so
+    // positionForInsert returns the empty-list default (1000) regardless of
+    // insertBeforeIndex. Verified directly against positionForInsert.
+    await waitFor(() => expect(capturedBody).toMatchObject({ recurring: true, position: 1000 }));
   });
 });
