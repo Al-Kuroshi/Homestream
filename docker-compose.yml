@@ -1,0 +1,13 @@
+services:
+  personaltv:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PERSONALTV_PORT:-8080}:8080"
+    volumes:
+      - personaltv-data:/data
+      - ${MEDIA_PATH}:/media:ro
+    environment:
+      - PERSONALTV_DB_PATH=/data/personaltv.db
+volumes:
+  personaltv-data:

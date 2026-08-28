@@ -4,3 +4,4 @@
 *.db-shm
 /web/node_modules
 /.superpowers/
+.env

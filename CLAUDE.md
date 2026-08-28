@@ -14,7 +14,7 @@ The fifth and final MVP frontend screen, **TV** (`web/src/screens/TVScreen.tsx` 
 
 **Recurring weekly slot-chain scheduling is implemented** (design spec: `docs/design/2026-08-26-recurring-slot-scheduling-design.md`). The `Program` model is gone, replaced end to end by `Slot` — see "Core domain model" below for the mental model you need before touching scheduling code. On the frontend, `ChannelScheduleScreen` (`/channels/:id`) is a drag-and-drop weekly grid (drag media in from the library panel, drag existing slots to move them, drop a Gap/Break entry, toggle recurring vs one-off per placement, delete via each block's × button). **None of that drag-and-drop has been exercised in a real browser either** — same caveat as the TV screen below; a manual pass is owed (see `docs/PROGRESS.md`).
 
-Docker packaging is still not implemented — that remains a separate, not-yet-written plan (see `docs/plans/`). It should also address the frontend build's bundle-size warning (`hls.js` is statically imported, ~866KB/270KB gzip in the production JS bundle) if bundle size becomes a concern for the embedded-binary size.
+**Docker packaging is implemented** (design spec: `docs/design/2026-08-27-docker-packaging-design.md`, plan: `docs/superpowers/plans/2026-08-27-docker-packaging.md`). A 3-stage `Dockerfile` builds the frontend (`npm ci && npm run build`), cross-compiles the Go binary (`CGO_ENABLED=0`, `TARGETOS`/`TARGETARCH`-aware for multi-arch builds), and assembles a `debian:bookworm-slim` runtime image with `ffmpeg`/`ffprobe`/`curl` installed and a non-root user. `docker-compose.yml` wires a read-only bind mount for the user's media library, a named volume for the SQLite DB, and a configurable host port via `PERSONALTV_PORT` (see `.env.example`). A top-level `README.md` documents the Docker quick-start. Only `linux/amd64` has actually been run and verified; ARM64 is a documented, accepted out-of-scope item (see the design spec) rather than a known bug.
 
 `ffmpeg`/`ffprobe` must be installed and on `PATH` to build the mental model of and to run this repo's tests (several tests generate short synthetic videos with `ffmpeg` and probe them with `ffprobe`).
 
@@ -46,7 +46,7 @@ that serves the real SPA. `web/embed_test.go`'s tests skip automatically
 (with a clear message) when `web/dist` isn't built, rather than failing or
 passing vacuously.
 
-There is no Dockerfile/Docker Compose setup yet, despite Docker Compose being the intended deployment method (see below) — that lands with a future packaging plan.
+A `Dockerfile`/`docker-compose.yml` setup now exists at the repo root (see "Project status" above) and is the intended deployment method (see below); it still expects the same `npm run build` → `go build` order internally (the Dockerfile's frontend stage runs `npm run build` before the Go build stage compiles the binary), so the build-order note above applies inside the image too, not just to a local `go build`.
 
 ## Testing conventions
 
