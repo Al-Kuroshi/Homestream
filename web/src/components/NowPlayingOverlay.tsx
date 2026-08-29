@@ -6,6 +6,10 @@ interface Props {
   currentTimeSec: number;
   durationSec: number;
   nextTitle: string | null;
+  volume: number;
+  muted: boolean;
+  onVolumeChange: (volume: number) => void;
+  onMuteToggle: () => void;
 }
 
 const HIDE_AFTER_MS = 3000;
@@ -15,7 +19,16 @@ const HIDE_AFTER_MS = 3000;
 // video stays unobstructed during normal viewing. Self-contained (listens
 // on window directly) so it doesn't need TVScreen to coordinate pointer
 // events with it.
-export function NowPlayingOverlay({ title, currentTimeSec, durationSec, nextTitle }: Props) {
+export function NowPlayingOverlay({
+  title,
+  currentTimeSec,
+  durationSec,
+  nextTitle,
+  volume,
+  muted,
+  onVolumeChange,
+  onMuteToggle,
+}: Props) {
   const [visible, setVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -43,7 +56,29 @@ export function NowPlayingOverlay({ title, currentTimeSec, durationSec, nextTitl
       <div className="now-playing-progress-track">
         <div className="now-playing-progress-fill" style={{ width: `${progressPercent}%` }} />
       </div>
-      {nextTitle && <p className="now-playing-next">Next: {nextTitle}</p>}
+      <div className="now-playing-bottom-row">
+        {nextTitle && <p className="now-playing-next">Next: {nextTitle}</p>}
+        <div className="now-playing-volume">
+          <button
+            type="button"
+            className="now-playing-mute-button"
+            aria-label={muted || volume === 0 ? "Unmute" : "Mute"}
+            onClick={onMuteToggle}
+          >
+            {muted || volume === 0 ? "🔇" : "🔊"}
+          </button>
+          <input
+            type="range"
+            className="now-playing-volume-slider"
+            aria-label="Volume"
+            min={0}
+            max={1}
+            step={0.05}
+            value={volume}
+            onChange={(e) => onVolumeChange(Number(e.target.value))}
+          />
+        </div>
+      </div>
     </div>
   );
 }

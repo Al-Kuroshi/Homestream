@@ -16,10 +16,19 @@ vi.mock("../components/VideoPlayer", () => ({
     mode: string;
     src: string;
     offsetSec?: number;
+    volume?: number;
+    muted?: boolean;
     onError: () => void;
     onTimeUpdate?: (currentTimeSec: number) => void;
   }) => (
-    <div data-testid="video-player" data-mode={props.mode} data-src={props.src} data-offset={props.offsetSec}>
+    <div
+      data-testid="video-player"
+      data-mode={props.mode}
+      data-src={props.src}
+      data-offset={props.offsetSec}
+      data-volume={props.volume}
+      data-muted={props.muted}
+    >
       <button onClick={() => props.onError()}>Simulate video error</button>
       <button onClick={() => props.onTimeUpdate?.(50)}>Report currentTime 50</button>
       <button onClick={() => props.onTimeUpdate?.(8)}>Report currentTime 8</button>
@@ -38,10 +47,22 @@ vi.mock("../components/NowPlayingOverlay", () => ({
     currentTimeSec: number;
     durationSec: number;
     nextTitle: string | null;
+    volume: number;
+    muted: boolean;
+    onVolumeChange: (volume: number) => void;
+    onMuteToggle: () => void;
   }) => (
-    <div data-testid="now-playing-overlay" data-current-time-sec={props.currentTimeSec} data-duration-sec={props.durationSec}>
+    <div
+      data-testid="now-playing-overlay"
+      data-current-time-sec={props.currentTimeSec}
+      data-duration-sec={props.durationSec}
+      data-volume={props.volume}
+      data-muted={props.muted}
+    >
       <p>{props.title}</p>
       {props.nextTitle && <p>Next: {props.nextTitle}</p>}
+      <button onClick={() => props.onVolumeChange(0.3)}>Set volume 0.3</button>
+      <button onClick={() => props.onMuteToggle()}>Toggle mute</button>
     </div>
   ),
 }));
@@ -217,6 +238,66 @@ describe("TVScreen", () => {
     fireEvent.click(await screen.findByText("Retry"));
     expect(await screen.findByText("Nothing scheduled right now")).toBeInTheDocument();
     expect(watchCallCount).toBe(2);
+  });
+
+  it("defaults volume/muted to 1/false and passes them to both VideoPlayer and NowPlayingOverlay", async () => {
+    server.use(
+      http.post("/api/channels/1/watch", () =>
+        HttpResponse.json({ status: "playing", mode: "direct", media_item_id: 5, offset_sec: 0 })
+      ),
+      http.get("/api/channels/1/now", () =>
+        HttpResponse.json({ channel_id: 1, current: null, offset_sec: 0, next: null })
+      )
+    );
+    renderScreen();
+
+    const player = await screen.findByTestId("video-player");
+    expect(player).toHaveAttribute("data-volume", "1");
+    expect(player).toHaveAttribute("data-muted", "false");
+    const overlay = await screen.findByTestId("now-playing-overlay");
+    expect(overlay).toHaveAttribute("data-volume", "1");
+    expect(overlay).toHaveAttribute("data-muted", "false");
+  });
+
+  it("persists volume/muted changes to localStorage and reflects them in both children", async () => {
+    server.use(
+      http.post("/api/channels/1/watch", () =>
+        HttpResponse.json({ status: "playing", mode: "direct", media_item_id: 5, offset_sec: 0 })
+      ),
+      http.get("/api/channels/1/now", () =>
+        HttpResponse.json({ channel_id: 1, current: null, offset_sec: 0, next: null })
+      )
+    );
+    renderScreen();
+
+    await screen.findByTestId("video-player");
+    fireEvent.click(screen.getByText("Set volume 0.3"));
+    fireEvent.click(screen.getByText("Toggle mute"));
+
+    expect(screen.getByTestId("video-player")).toHaveAttribute("data-volume", "0.3");
+    expect(screen.getByTestId("video-player")).toHaveAttribute("data-muted", "true");
+    expect(screen.getByTestId("now-playing-overlay")).toHaveAttribute("data-volume", "0.3");
+    expect(screen.getByTestId("now-playing-overlay")).toHaveAttribute("data-muted", "true");
+    expect(localStorage.getItem("personaltv.tv.volume")).toBe("0.3");
+    expect(localStorage.getItem("personaltv.tv.muted")).toBe("true");
+  });
+
+  it("restores volume/muted from localStorage on mount", async () => {
+    localStorage.setItem("personaltv.tv.volume", "0.6");
+    localStorage.setItem("personaltv.tv.muted", "true");
+    server.use(
+      http.post("/api/channels/1/watch", () =>
+        HttpResponse.json({ status: "playing", mode: "direct", media_item_id: 5, offset_sec: 0 })
+      ),
+      http.get("/api/channels/1/now", () =>
+        HttpResponse.json({ channel_id: 1, current: null, offset_sec: 0, next: null })
+      )
+    );
+    renderScreen();
+
+    const player = await screen.findByTestId("video-player");
+    expect(player).toHaveAttribute("data-volume", "0.6");
+    expect(player).toHaveAttribute("data-muted", "true");
   });
 
   it("persists the tuned-in channel id to localStorage", async () => {

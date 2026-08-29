@@ -10,6 +10,26 @@ import { VideoPlayer } from "../components/VideoPlayer";
 import "./TVScreen.css";
 
 const LAST_CHANNEL_KEY = "personaltv.tv.lastChannelId";
+const VOLUME_KEY = "personaltv.tv.volume";
+const MUTED_KEY = "personaltv.tv.muted";
+
+function readStoredVolume(): number {
+  try {
+    const stored = localStorage.getItem(VOLUME_KEY);
+    const parsed = stored === null ? NaN : Number(stored);
+    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function readStoredMuted(): boolean {
+  try {
+    return localStorage.getItem(MUTED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 // What to call the next-up entry. A gap slot has no media item at all
 // (mediaItemId is 0), so the media lookup would always miss and render the
@@ -30,6 +50,29 @@ export function TVScreen() {
 
   const [videoError, setVideoError] = useState(false);
   const [rawCurrentTime, setRawCurrentTime] = useState(0);
+  const [volume, setVolume] = useState(readStoredVolume);
+  const [muted, setMuted] = useState(readStoredMuted);
+
+  function handleVolumeChange(next: number) {
+    setVolume(next);
+    try {
+      localStorage.setItem(VOLUME_KEY, String(next));
+    } catch {
+      // Best-effort, same as the last-watched-channel persistence below.
+    }
+  }
+
+  function handleMuteToggle() {
+    setMuted((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(MUTED_KEY, String(next));
+      } catch {
+        // Best-effort, same as the last-watched-channel persistence below.
+      }
+      return next;
+    });
+  }
 
   // A fresh tune-in event (new state object) means a fresh attempt: clear
   // any stale video error from the previous attempt and reset the
@@ -105,6 +148,8 @@ export function TVScreen() {
           mode={state.mode}
           src={src}
           offsetSec={state.mode === "direct" ? state.offsetSec : undefined}
+          volume={volume}
+          muted={muted}
           onError={() => setVideoError(true)}
           onTimeUpdate={setRawCurrentTime}
         />
@@ -113,6 +158,10 @@ export function TVScreen() {
           currentTimeSec={displayedTimeSec}
           durationSec={item?.duration_sec ?? 0}
           nextTitle={nextTitle}
+          volume={volume}
+          muted={muted}
+          onVolumeChange={handleVolumeChange}
+          onMuteToggle={handleMuteToggle}
         />
       </>
     );

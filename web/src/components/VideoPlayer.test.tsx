@@ -86,6 +86,29 @@ describe("VideoPlayer", () => {
     expect(screen.queryByText("▶ Tap to play")).not.toBeInTheDocument();
   });
 
+  it("applies volume and muted to the video element", () => {
+    render(<VideoPlayer mode="direct" src="/api/media/5/stream" onError={vi.fn()} volume={0.4} muted />);
+    const video = screen.getByTestId("video-el") as HTMLVideoElement;
+    expect(video.volume).toBe(0.4);
+    expect(video.muted).toBe(true);
+  });
+
+  it("updates volume/muted live without resetting src or restarting hls.js", () => {
+    const { rerender } = render(
+      <VideoPlayer mode="hls" src="/api/playback/sessions/abc/playlist.m3u8" onError={vi.fn()} volume={1} muted={false} />
+    );
+    expect(hlsInstances).toHaveLength(1);
+    const video = screen.getByTestId("video-el") as HTMLVideoElement;
+
+    rerender(
+      <VideoPlayer mode="hls" src="/api/playback/sessions/abc/playlist.m3u8" onError={vi.fn()} volume={0.2} muted />
+    );
+    expect(video.volume).toBe(0.2);
+    expect(video.muted).toBe(true);
+    expect(hlsInstances).toHaveLength(1);
+    expect(hlsInstances[0].loadSource).toHaveBeenCalledTimes(1);
+  });
+
   it("does not reset the video src or restart hls.js when only the onError/onTimeUpdate callback identities change", () => {
     const { rerender } = render(
       <VideoPlayer mode="hls" src="/api/playback/sessions/abc/playlist.m3u8" onError={() => {}} />
