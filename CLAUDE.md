@@ -88,6 +88,18 @@ with the code they test (`Foo.tsx` / `Foo.test.tsx`), black-box by default
 API at the network boundary with MSW rather than mocking `web/src/api/*`
 calls directly.
 
+## Git workflow
+
+`origin` is `github.com/Al-Kuroshi/Homestream`. For implementation-plan-sized work, the default is a git worktree (`.claude/worktrees/<name>`, branch `worktree-<name>`) rather than working directly on `main`.
+
+**Finish a worktree branch by pushing it and merging via PR — never by merging to `main` locally from inside the worktree.** This isn't a style choice: `main` is checked out in the primary working directory while the worktree has its own branch checked out, and git itself refuses to force-update a branch ref that's checked out elsewhere (`cannot force update the branch ... used by worktree at ...`). So "merge to main locally, then push" is not a reachable path from a worktree session — only "push the branch, open a PR, merge remotely" is. After the PR merges:
+
+1. In the primary checkout, `git fetch` then bring `main` up to date (fast-forward or rebase onto `origin/main`).
+2. Confirm `main` tracks `origin/main` (`git branch -vv`; set it with `git branch --set-upstream-to=origin/main main` if not) — an untracked local `main` gives no warning when it falls behind a PR merged straight to the remote.
+3. Remove the worktree (`git worktree remove`) and delete the branch (local, and remote if GitHub didn't auto-delete it) once its content is confirmed merged.
+
+Any uncommitted changes sitting in the primary checkout are independent of that flow — commit/stash them on their own merits before syncing `main`, since a `fetch`+fast-forward won't touch working-tree state but a rebase can conflict with it.
+
 ## What this product is
 
 Personal TV (a.k.a. "HomeStreamer") is an open-source, self-hosted platform that turns a user's local media library into configurable, scheduled virtual TV channels with an electronic program guide (EPG) — the experience of "pick a channel and watch what's on" rather than browsing a file library.
